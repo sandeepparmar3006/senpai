@@ -14,9 +14,14 @@ AniList GraphQL (isAdult: false filter at fetch time)
    ingest/load_to_supabase.py    -> Supabase pgvector table
         |
    api/chat.js (Vercel function)
-        | embed query (Together) -> match_media_chunks() RPC -> Together chat (openai/gpt-oss-20b) w/ citations
-   public/ (minimal chat UI)
+        | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
+        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (plot/synopsis questions)
+        |   |-- filter_lookup    -> filter_media() RPC (structured: genre/episodes/format across ALL rows)
+        | generate(question, route_results) -> Together chat completion w/ citations
+   public/ (chat UI, shows which route was taken)
 ```
+
+Tool-routing layer: `semantic_search` only returns the top-5 similar chunks, which silently gives wrong/incomplete answers for questions like "what anime have more than 100 episodes" (needs to scan all 250 rows, not top-5 by similarity). The router forces the model to pick `semantic_search` or `filter_lookup` per question via real function-calling (not a manual classifier prompt) before answering. Verified: open-weight models sometimes emit a hallucinated answer in `message.content` alongside the real `tool_calls` — the implementation discards `content` and only trusts the executed tool result.
 
 Note: `BAAI/bge-*` embedding models and `meta-llama/Llama-3.3-*-Free` chat models require a paid dedicated endpoint on Together — not available on free-tier accounts despite being listed in the catalog. Stuck to models confirmed serverless-accessible by testing directly against the API.
 
@@ -47,7 +52,8 @@ Honest caveat: these are single-hop questions against a small (250-entry), well-
 
 > Built SenpAI, a production RAG assistant over 250+ anime/manga entries (Y: 100% retrieval hit rate and answer accuracy across a 20-question eval set spanning metadata and plot-based questions), by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app.
 
-## Phase 2 (only if time remains)
+## Phase 2
 
-- Jikan/MyAnimeList reviews as a second text source (richer opinion-based questions)
-- Function-calling / tool-routing layer (RAG vs. structured lookup)
+- ~~Function-calling / tool-routing layer (RAG vs. structured lookup)~~ — done. `api/chat.js` routes between `semantic_search` and `filter_lookup` via real tool-calling.
+- **Known gap:** `eval/eval.py` still only exercises the `semantic_search` path — it was not updated to mirror the routing logic (cut for time/cost). Manually verified both routes via curl against real ingested data (see commit history), but there's no automated eval coverage for `filter_lookup` yet.
+- Jikan/MyAnimeList reviews as a second text source (richer opinion-based questions) — not started.

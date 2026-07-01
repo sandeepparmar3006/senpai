@@ -7,6 +7,69 @@ const K = 5;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "semantic_search",
+      description:
+        "Search anime/manga by plot, themes, or synopsis content using semantic similarity. Use for questions about story, characters, powers, or 'what happens in X'.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The search query" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "filter_lookup",
+      description:
+        "Filter the anime database by structured criteria across ALL entries: genre, episode count range, or format. Use for questions like 'what anime have more than N episodes', 'list horror anime', or 'which are movies'. Do not use semantic_search for these — it only returns the top few similar entries, not an accurate filtered list.",
+      parameters: {
+        type: "object",
+        properties: {
+          genre: { type: "string", description: "A single genre to filter by, e.g. Horror, Romance, Action" },
+          min_episodes: { type: "integer" },
+          max_episodes: { type: "integer" },
+          format: { type: "string", description: "TV, MOVIE, OVA, etc." },
+        },
+      },
+    },
+  },
+];
+
+async function chatCompletion(body) {
+  const resp = await fetch("https://api.together.xyz/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${TOGETHER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: CHAT_MODEL, ...body }),
+  });
+  return resp.json();
+}
+
+async function route(question) {
+  const data = await chatCompletion({
+    messages: [
+      {
+        role: "system",
+        content: "Decide how to answer the user's anime/manga question by calling exactly one tool.",
+      },
+      { role: "user", content: question },
+    ],
+    tools: TOOLS,
+    tool_choice: "required",
+  });
+  // Open-weight models sometimes emit multiple/redundant tool_calls; the first is authoritative.
+  return data.choices[0].message.tool_calls?.[0] ?? null;
+}
+
 async function embed(text) {
   const resp = await fetch("https://api.together.xyz/v1/embeddings", {
     method: "POST",
@@ -20,7 +83,8 @@ async function embed(text) {
   return data.data[0].embedding;
 }
 
-async function retrieve(embedding) {
+async function semanticSearch(searchQuery) {
+  const embedding = await embed(searchQuery);
   const { data, error } = await supabase.rpc("match_media_chunks", {
     query_embedding: embedding,
     match_count: K,
@@ -29,26 +93,37 @@ async function retrieve(embedding) {
   return data;
 }
 
-async function generate(question, chunks) {
-  const context = chunks.map((c) => `[${c.title}] ${c.chunk_text}`).join("\n\n");
-  const resp = await fetch("https://api.together.xyz/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${TOGETHER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "Answer only using the provided context. Cite the anime title in brackets.",
-        },
-        { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
-      ],
-    }),
+async function filterLookup(args) {
+  const { data, error } = await supabase.rpc("filter_media", {
+    genre_filter: args.genre ?? null,
+    min_episodes: args.min_episodes ?? null,
+    max_episodes: args.max_episodes ?? null,
+    format_filter: args.format ?? null,
   });
-  const data = await resp.json();
+  if (error) throw error;
+  return data;
+}
+
+function buildContext(routeName, results) {
+  if (routeName === "filter_lookup") {
+    return results
+      .map((r) => `[${r.title}] genres: ${(r.metadata.genres || []).join(", ")}, episodes: ${r.metadata.episodes}, format: ${r.metadata.format}`)
+      .join("\n");
+  }
+  return results.map((c) => `[${c.title}] ${c.chunk_text}`).join("\n\n");
+}
+
+async function generate(question, routeName, results) {
+  const context = buildContext(routeName, results);
+  const data = await chatCompletion({
+    messages: [
+      {
+        role: "system",
+        content: "Answer only using the provided context. Cite anime titles in brackets.",
+      },
+      { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
+    ],
+  });
   return data.choices[0].message.content;
 }
 
@@ -63,12 +138,28 @@ export default async function handler(req, res) {
     return;
   }
 
-  const embedding = await embed(query);
-  const chunks = await retrieve(embedding);
-  const answer = await generate(query, chunks);
+  const toolCall = await route(query);
+  const routeName = toolCall?.function?.name === "filter_lookup" ? "filter_lookup" : "semantic_search";
+
+  let results;
+  if (routeName === "filter_lookup") {
+    const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
+    results = await filterLookup(args);
+  } else {
+    const args = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
+    results = await semanticSearch(args.query || query);
+  }
+
+  if (results.length === 0) {
+    res.status(200).json({ answer: "No matching anime found in the database.", sources: [], route: routeName });
+    return;
+  }
+
+  const answer = await generate(query, routeName, results);
 
   res.status(200).json({
     answer,
-    sources: chunks.map((c) => ({ title: c.title, source_id: c.source_id })),
+    sources: results.map((r) => ({ title: r.title, source_id: r.source_id })),
+    route: routeName,
   });
 }

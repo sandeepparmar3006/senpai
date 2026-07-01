@@ -8,13 +8,23 @@ function hideEmptyState() {
   if (emptyState) emptyState.remove();
 }
 
-function addBubble(role, text, sources) {
+function addBubble(role, text, sources, route) {
   const row = document.createElement("div");
   row.className = `bubble-row ${role}`;
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+
+  if (route) {
+    const badge = document.createElement("div");
+    badge.className = "route-badge";
+    badge.textContent = route === "filter_lookup" ? "structured lookup" : "semantic search";
+    bubble.appendChild(badge);
+  }
+
+  const textEl = document.createElement("div");
+  textEl.textContent = text;
+  bubble.appendChild(textEl);
   row.appendChild(bubble);
 
   if (sources && sources.length) {
@@ -68,7 +78,7 @@ async function ask(query) {
       addBubble("error", data.error);
       return;
     }
-    addBubble("assistant", data.answer, data.sources);
+    addBubble("assistant", data.answer, data.sources, data.route);
   } catch (err) {
     removeTypingIndicator();
     addBubble("error", "Something went wrong reaching SenpAI. Try again in a moment.");
