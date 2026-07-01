@@ -3,19 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SenpAI — ask questions about anime and manga, answered from real synopses, genres, and tags with citations." />
   <title>SenpAI — Anime/Manga RAG Assistant</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230F0F23'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%23F97316' font-family='sans-serif'%3E狐%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main>
-    <h1>SenpAI</h1>
-    <p class="subtitle">Ask about anime/manga — answers grounded in retrieved sources.</p>
-    <div id="messages"></div>
-    <form id="chat-form">
-      <input id="query" type="text" placeholder="e.g. What genre is Fullmetal Alchemist?" autocomplete="off" />
-      <button type="submit">Ask</button>
-    </form>
-  </main>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">狐</span>
+        <div>
+          <h1>SenpAI</h1>
+          <p class="subtitle">Ask about anime &amp; manga — grounded in real sources, not guesses.</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="chat-shell">
+      <div id="messages" class="messages" aria-live="polite">
+        <div id="empty-state" class="empty-state">
+          <p>Try asking:</p>
+          <div class="suggestions">
+            <button type="button" class="suggestion-chip">What genres is Death Note classified under?</button>
+            <button type="button" class="suggestion-chip">What device controls avatars in Sword Art Online?</button>
+            <button type="button" class="suggestion-chip">What's the Law of Equivalent Exchange?</button>
+          </div>
+        </div>
+      </div>
+
+      <form id="chat-form" class="composer">
+        <input
+          id="query"
+          type="text"
+          placeholder="Ask about any anime or manga…"
+          autocomplete="off"
+          aria-label="Your question"
+        />
+        <button type="submit" id="send-btn" aria-label="Send question">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 12L20 4L14 20L11 13L4 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </form>
+    </main>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>
