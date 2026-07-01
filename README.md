@@ -42,18 +42,25 @@ Fetch query hard-filters `isAdult: false` at the AniList API level — adult-tag
 
 ## Eval results
 
-250 anime entries ingested. 20-question hand-labeled eval set — 8 metadata lookups (genre, episode count, format) + 12 synopsis/plot-based questions requiring semantic retrieval (e.g. "what device controls avatars in Sword Art Online," "what forbidden act do the Elric brothers attempt"):
-- Retrieval hit rate (expected title in top-5): 20/20 = 100%
-- Answer keyword match rate: 20/20 = 100%
+250 anime entries ingested. 22-question hand-labeled eval set — 8 metadata lookups, 12 synopsis/plot questions (semantic route), 2 structured questions (filter route, e.g. "what anime have more than 150 episodes"). `eval.py` now runs every question through the same router as production (real tool-calling, not a hardcoded route per question):
 
-Honest caveat: these are single-hop questions against a small (250-entry), well-known-title corpus — real interview follow-ups to expect: "what breaks at 10k+ entries," "what about ambiguous/multi-title queries," "what's your fallback when retrieval returns nothing relevant." 100% here means the pipeline is correct, not that it's stress-tested at scale.
+- Route match rate (router picked the expected path): 18/22 = 82%
+- Retrieval hit rate: 17/22 = 77%
+- Answer keyword match rate: 17/22 = 77%
+
+Honest read: the router is not perfect, and that's the real finding, not a bug to hide. Two concrete failure modes observed and reproducible via `python eval/eval.py`:
+1. Plot questions occasionally get misrouted to `filter_lookup` (e.g. "what creatures devour humans in Attack on Titan" — a synopsis question — got classified as structured and returned "No matching anime found").
+2. `filter_lookup` sometimes extracts wrong or empty arguments for legitimate structured questions (the "which anime are movies" question returned no results — the model didn't pass `format: "MOVIE"` correctly).
+
+The earlier 100%/100% numbers (previous README revision) were measured before the router existed, i.e. semantic-search-only. Adding the router improved real correctness (structured questions now get accurate whole-corpus answers instead of top-5-similarity guesses) but introduced routing error as a new, measurable failure surface — the tradeoff is real and this is what "I added an eval and it changed my story" actually looks like.
 
 ## Resume bullet
 
-> Built SenpAI, a production RAG assistant over 250+ anime/manga entries (Y: 100% retrieval hit rate and answer accuracy across a 20-question eval set spanning metadata and plot-based questions), by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app.
+> Built SenpAI, a production RAG assistant over 250+ anime/manga entries with a tool-routing layer (semantic search vs. structured SQL filter) chosen via real function-calling, by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app. Eval harness (22 hand-labeled questions) surfaced and documents a genuine 82% routing accuracy, not an inflated number.
 
 ## Phase 2
 
 - ~~Function-calling / tool-routing layer (RAG vs. structured lookup)~~ — done. `api/chat.js` routes between `semantic_search` and `filter_lookup` via real tool-calling.
-- **Known gap:** `eval/eval.py` still only exercises the `semantic_search` path — it was not updated to mirror the routing logic (cut for time/cost). Manually verified both routes via curl against real ingested data (see commit history), but there's no automated eval coverage for `filter_lookup` yet.
+- ~~Eval coverage for the routing layer~~ — done. `eval.py` now routes every question the same way production does; see real 82%/77%/77% numbers above.
+- **Next real improvement, not done:** tighten the router's system prompt / tool descriptions to reduce misclassification, then re-run eval to see if the number actually moves — don't just re-word the prompt and assume it helped.
 - Jikan/MyAnimeList reviews as a second text source (richer opinion-based questions) — not started.

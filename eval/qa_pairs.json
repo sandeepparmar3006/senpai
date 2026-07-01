@@ -98,5 +98,17 @@
     "question": "What title did Gold Roger hold before his execution in One Piece?",
     "expected_title": "ONE PIECE",
     "expected_keywords": ["Pirate King"]
+  },
+  {
+    "question": "What anime have more than 150 episodes?",
+    "expected_route": "filter_lookup",
+    "expected_titles_any": ["Naruto: Shippuden", "Bleach", "Boruto: Naruto Next Generations", "Dragon Ball Z", "Naruto", "Gintama", "Fairy Tail", "Black Clover", "Dragon Ball"],
+    "expected_keywords": ["Naruto"]
+  },
+  {
+    "question": "Which anime in the database are movies?",
+    "expected_route": "filter_lookup",
+    "expected_titles_any": ["Your Name.", "A Silent Voice"],
+    "expected_keywords": ["Your Name"]
   }
 ]
