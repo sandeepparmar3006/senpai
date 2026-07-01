@@ -1,0 +1,102 @@
+[
+  {
+    "question": "What genres is Death Note classified under?",
+    "expected_title": "Death Note",
+    "expected_keywords": ["Mystery", "Psychological", "Supernatural", "Thriller"]
+  },
+  {
+    "question": "How many episodes does Fullmetal Alchemist: Brotherhood have?",
+    "expected_title": "Fullmetal Alchemist: Brotherhood",
+    "expected_keywords": ["64"]
+  },
+  {
+    "question": "Is Your Name. a movie or a TV series?",
+    "expected_title": "Your Name.",
+    "expected_keywords": ["movie", "Movie"]
+  },
+  {
+    "question": "What genres does A Silent Voice belong to?",
+    "expected_title": "A Silent Voice",
+    "expected_keywords": ["Drama", "Romance", "Slice of Life"]
+  },
+  {
+    "question": "How many episodes are in Tokyo Ghoul's first season?",
+    "expected_title": "Tokyo Ghoul",
+    "expected_keywords": ["12"]
+  },
+  {
+    "question": "Is The Promised Neverland classified as horror?",
+    "expected_title": "The Promised Neverland",
+    "expected_keywords": ["Horror", "horror"]
+  },
+  {
+    "question": "How many episodes does Assassination Classroom have?",
+    "expected_title": "Assassination Classroom",
+    "expected_keywords": ["22"]
+  },
+  {
+    "question": "What genres is One Piece categorized under?",
+    "expected_title": "ONE PIECE",
+    "expected_keywords": ["Action", "Adventure", "Comedy", "Drama", "Fantasy"]
+  },
+  {
+    "question": "What is the name of the shinigami who drops the notebook in Death Note?",
+    "expected_title": "Death Note",
+    "expected_keywords": ["Ryuk"]
+  },
+  {
+    "question": "What device do players use to control their avatars in Sword Art Online?",
+    "expected_title": "Sword Art Online",
+    "expected_keywords": ["Nerve Gear"]
+  },
+  {
+    "question": "What is the core alchemical law in Fullmetal Alchemist: Brotherhood that says something of equal value must be lost?",
+    "expected_title": "Fullmetal Alchemist: Brotherhood",
+    "expected_keywords": ["Equivalent Exchange", "equal value"]
+  },
+  {
+    "question": "What forbidden alchemical act do the Elric brothers attempt in Fullmetal Alchemist: Brotherhood?",
+    "expected_title": "Fullmetal Alchemist: Brotherhood",
+    "expected_keywords": ["human transmutation"]
+  },
+  {
+    "question": "What creatures devour humans in Attack on Titan?",
+    "expected_title": "Attack on Titan",
+    "expected_keywords": ["Titans", "titans"]
+  },
+  {
+    "question": "What beast attacked Naruto's village right before his birth?",
+    "expected_title": "Naruto",
+    "expected_keywords": ["Kyuubi", "Nine-tailed"]
+  },
+  {
+    "question": "What profession does Gon want to become like his missing father in Hunter x Hunter?",
+    "expected_title": "Hunter x Hunter (2011)",
+    "expected_keywords": ["Hunter"]
+  },
+  {
+    "question": "What supernatural phenomenon do the two leads experience with each other in Your Name.?",
+    "expected_title": "Your Name.",
+    "expected_keywords": ["Body Swapping", "swap"]
+  },
+  {
+    "question": "What does Okabe Rintarou call himself in Steins;Gate?",
+    "expected_title": "Steins;Gate",
+    "expected_keywords": ["mad scientist"]
+  },
+  {
+    "question": "What mobile armor technology did Britannia use to conquer Japan in Code Geass?",
+    "expected_title": "Code Geass: Lelouch of the Rebellion",
+    "expected_keywords": ["Knightmare Frames"]
+  },
+  {
+    "question": "What is the only thing that can exorcise a Curse in Jujutsu Kaisen?",
+    "expected_title": "JUJUTSU KAISEN",
+    "expected_keywords": ["Curse"]
+  },
+  {
+    "question": "What title did Gold Roger hold before his execution in One Piece?",
+    "expected_title": "ONE PIECE",
+    "expected_keywords": ["Pirate King"]
+  }
+]

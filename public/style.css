@@ -1,0 +1,40 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 640px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  background: #0f0f14;
+  color: #eee;
+}
+h1 { margin-bottom: 0; }
+.subtitle { color: #888; margin-top: 0.25rem; }
+#messages {
+  height: 60vh;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+.message { margin-bottom: 1rem; white-space: pre-wrap; }
+.message.user { color: #7cf; font-weight: 600; }
+.message.assistant { color: #ddd; }
+.message.error { color: #f66; }
+form { display: flex; gap: 0.5rem; }
+input {
+  flex: 1;
+  padding: 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #1a1a20;
+  color: #eee;
+}
+button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  border: none;
+  background: #7cf;
+  color: #111;
+  font-weight: 600;
+  cursor: pointer;
+}
