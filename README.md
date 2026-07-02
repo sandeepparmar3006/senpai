@@ -54,13 +54,24 @@ Honest read: the router is not perfect, and that's the real finding, not a bug t
 
 The earlier 100%/100% numbers (previous README revision) were measured before the router existed, i.e. semantic-search-only. Adding the router improved real correctness (structured questions now get accurate whole-corpus answers instead of top-5-similarity guesses) but introduced routing error as a new, measurable failure surface — the tradeoff is real and this is what "I added an eval and it changed my story" actually looks like.
 
+### Fix and re-eval (commit `45c27b5`)
+
+Both failure modes above had an identifiable cause: the router's tool descriptions didn't state the disambiguation rule ("named-title plot question always wins even if phrased as 'what X'") and the `filter_lookup` `format` param had no enum, so the model sometimes dropped it. Tightened both tool descriptions and the router system prompt to state these rules explicitly, then re-ran `eval.py` unchanged:
+
+- Route match rate: 22/22 = 100% (was 82%)
+- Retrieval hit rate: 22/22 = 100% (was 77%)
+- Answer keyword match rate: 22/22 = 100% (was 77%)
+
+Caveat, not a victory lap: this is the same 22-question set that diagnosed the two bugs, so hitting 100% mostly confirms those two specific fixes worked — it is not proof the router generalizes to unseen phrasing, and N=22 is too small to treat any of these numbers as statistically meaningful. Treat this as a regression check that passed, not a claim that routing is now "solved." The honest next step, if this project continues, is a larger held-out eval set the fixes weren't tuned against.
+
 ## Resume bullet
 
-> Built SenpAI, a production RAG assistant over 250+ anime/manga entries with a tool-routing layer (semantic search vs. structured SQL filter) chosen via real function-calling, by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app. Eval harness (22 hand-labeled questions) surfaced and documents a genuine 82% routing accuracy, not an inflated number.
+> Built SenpAI, a production RAG assistant over 250+ anime/manga entries with a tool-routing layer (semantic search vs. structured SQL filter) chosen via real function-calling, by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app. Eval harness (22 hand-labeled questions) caught a genuine 82% routing accuracy, diagnosed two concrete failure modes, and closed both via a prompt fix validated by re-running the same eval.
 
 ## Phase 2
 
 - ~~Function-calling / tool-routing layer (RAG vs. structured lookup)~~ — done. `api/chat.js` routes between `semantic_search` and `filter_lookup` via real tool-calling.
 - ~~Eval coverage for the routing layer~~ — done. `eval.py` now routes every question the same way production does; see real 82%/77%/77% numbers above.
-- **Next real improvement, not done:** tighten the router's system prompt / tool descriptions to reduce misclassification, then re-run eval to see if the number actually moves — don't just re-word the prompt and assume it helped.
+- ~~Tighten the router's system prompt / tool descriptions~~ — done, see "Fix and re-eval" above. Eval moved to 100%/100%/100%, but N=22 is the same set that diagnosed the bugs — not proof of generalization.
+- **Next real improvement, not done:** build a larger, held-out eval set (40-50 questions the router wasn't tuned against) to check whether the fix actually generalizes or just patched these two specific cases.
 - Jikan/MyAnimeList reviews as a second text source (richer opinion-based questions) — not started.
