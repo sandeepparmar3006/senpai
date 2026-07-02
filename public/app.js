@@ -3,12 +3,33 @@ const input = document.getElementById("query");
 const messages = document.getElementById("messages");
 const emptyState = document.getElementById("empty-state");
 const sendBtn = document.getElementById("send-btn");
+const scrollLatestBtn = document.getElementById("scroll-latest");
+const header = document.querySelector(".app-header");
 
 function hideEmptyState() {
   if (emptyState) emptyState.remove();
 }
 
+function isNearBottom(threshold = 120) {
+  return messages.scrollHeight - messages.scrollTop - messages.clientHeight < threshold;
+}
+
+function scrollToBottom(smooth = true) {
+  messages.scrollTo({ top: messages.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  scrollLatestBtn.classList.remove("visible");
+}
+
+messages.addEventListener("scroll", () => {
+  header.classList.toggle("scrolled", messages.scrollTop > 4);
+  const hasOverflow = messages.scrollHeight > messages.clientHeight;
+  scrollLatestBtn.classList.toggle("visible", hasOverflow && !isNearBottom());
+});
+
+scrollLatestBtn.addEventListener("click", () => scrollToBottom(true));
+
 function addBubble(role, text, sources, route) {
+  const wasNearBottom = role === "user" || isNearBottom();
+
   const row = document.createElement("div");
   row.className = `bubble-row ${role}`;
 
@@ -40,11 +61,16 @@ function addBubble(role, text, sources, route) {
   }
 
   messages.appendChild(row);
-  messages.scrollTop = messages.scrollHeight;
+  if (wasNearBottom) {
+    scrollToBottom(true);
+  } else {
+    scrollLatestBtn.classList.add("visible");
+  }
   return row;
 }
 
 function addTypingIndicator() {
+  const wasNearBottom = isNearBottom();
   const row = document.createElement("div");
   row.className = "bubble-row assistant";
   row.id = "typing-row";
@@ -53,7 +79,7 @@ function addTypingIndicator() {
   bubble.innerHTML = '<span class="typing-indicator"><span></span><span></span><span></span></span>';
   row.appendChild(bubble);
   messages.appendChild(row);
-  messages.scrollTop = messages.scrollHeight;
+  if (wasNearBottom) scrollToBottom(true);
 }
 
 function removeTypingIndicator() {
