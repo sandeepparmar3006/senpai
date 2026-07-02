@@ -22,7 +22,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "semantic_search",
-            "description": "Search anime/manga by plot, themes, or synopsis content using semantic similarity. Use for questions about story, characters, powers, or 'what happens in X'.",
+            "description": "Search anime/manga by plot, themes, or synopsis content using semantic similarity. Use for ANY question about a specific named anime's story, characters, powers, or terminology — even if the question starts with 'what' or 'which'. Do not use this to filter or list across multiple anime.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -34,14 +34,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "filter_lookup",
-            "description": "Filter the anime database by structured criteria across ALL entries: genre, episode count range, or format. Use for questions like 'what anime have more than N episodes', 'list horror anime', or 'which are movies'. Do not use semantic_search for these — it only returns the top few similar entries, not an accurate filtered list.",
+            "description": "Filter the anime database by structured criteria across ALL entries: genre, episode count range, or format. Use ONLY when the question asks to list, count, or filter across multiple anime (e.g. 'what anime have more than N episodes', 'list horror anime', 'which are movies'). Never use this for a question about one specific named anime's plot or details — use semantic_search for that.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "genre": {"type": "string"},
                     "min_episodes": {"type": "integer"},
                     "max_episodes": {"type": "integer"},
-                    "format": {"type": "string"},
+                    "format": {
+                        "type": "string",
+                        "description": "Exact uppercase format code: TV, MOVIE, OVA, ONA, SPECIAL, or MUSIC. If the question asks which entries are 'movies', set this to \"MOVIE\".",
+                    },
                 },
             },
         },
@@ -64,7 +67,14 @@ def route(question: str) -> dict | None:
     data = _chat_completion(
         {
             "messages": [
-                {"role": "system", "content": "Decide how to answer the user's anime/manga question by calling exactly one tool."},
+                {
+                    "role": "system",
+                    "content": (
+                        "Decide how to answer the user's anime/manga question by calling exactly one tool. "
+                        "If the question names a specific anime and asks about its plot, characters, or details, always choose semantic_search, even if phrased as 'what X'. "
+                        "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format."
+                    ),
+                },
                 {"role": "user", "content": question},
             ],
             "tools": TOOLS,
