@@ -1,11 +1,51 @@
 # SenpAI
 
-RAG assistant over clean anime/manga metadata (synopses, genres, tags, studios) — no adult content, no reused code from any other project.
+[![CI](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer is grounded in retrieved sources and shows which retrieval path it took.
+
+**Live demo: [senpai-seven.vercel.app](https://senpai-seven.vercel.app)**
+
+| Semantic route | Structured route |
+|---|---|
+| ![Semantic search answering a plot/metadata question with source citations](docs/screenshot-semantic.png) | ![Structured lookup scanning the whole corpus for episode-count filters](docs/screenshot-filter.png) |
+
+## Why a router
+
+Top-k similarity search silently fails on whole-corpus questions: "which anime have more than 150 episodes?" needs to scan all 250 rows, not the 5 most similar chunks. So the model picks a tool per question via real function-calling (`tool_choice: required`), not a manual classifier prompt:
+
+- `semantic_search` — embed the query, pgvector `match_media_chunks()` RPC (plot/synopsis questions)
+- `filter_lookup` — `filter_media()` SQL RPC over all rows (genre/episode/format filters, lists, counts)
+
+One production detail worth knowing: open-weight models sometimes emit a hallucinated answer in `message.content` *alongside* the real `tool_calls`. The implementation discards `content` and only trusts the executed tool result.
+
+## Eval results
+
+22 hand-labeled questions (8 metadata, 12 plot, 2 structured), run through the **same router as production** by `eval/eval.py`:
+
+| Stage | Route match | Retrieval hit | Answer match |
+|---|---|---|---|
+| Pre-router (semantic-only baseline) | — | 100% | 100% |
+| Router added | 82% | 77% | 77% |
+| After router fix (`45c27b5`) | 100% | 100% | 100% |
+
+Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
+
+1. Plot questions occasionally misrouted to `filter_lookup` ("what creatures devour humans in Attack on Titan" was classified as structured and returned nothing).
+2. `filter_lookup` sometimes extracted wrong or empty arguments ("which anime are movies" didn't pass `format: "MOVIE"`).
+
+Both traced to the same root cause: tool descriptions didn't state the disambiguation rule (named-title plot question wins even when phrased as "what X") and the `format` param had no enum. Fixed both, re-ran the eval unchanged: 100/100/100. That re-run is a regression check validating those two fixes — the next step is a larger held-out set the fixes weren't tuned against, to test generalization.
+
+Two smaller findings from repeat runs, kept because they're what eval work actually looks like:
+
+- **Routing is sampled**, so route match occasionally drops a question run-to-run (21/22 observed on one re-run). Single-run numbers on N=22 carry real variance.
+- **One "failure" was a scoring bug, not a model bug**: the model emitted a U+202F narrow no-break space inside "Pirate King", which broke exact substring matching. `keyword_hit()` now normalizes unicode whitespace, with a regression test in `tests/test_eval.py`.
 
 ## Architecture
 
 ```
-AniList GraphQL (isAdult: false filter at fetch time)
+AniList GraphQL (isAdult: false filtered at fetch time)
         |
    ingest/fetch_anilist.py       -> data/raw_anilist.json
         |
@@ -15,63 +55,31 @@ AniList GraphQL (isAdult: false filter at fetch time)
         |
    api/chat.js (Vercel function)
         | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
-        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (plot/synopsis questions)
-        |   |-- filter_lookup    -> filter_media() RPC (structured: genre/episodes/format across ALL rows)
+        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC
+        |   |-- filter_lookup    -> filter_media() RPC
         | generate(question, route_results) -> Together chat completion w/ citations
    public/ (chat UI, shows which route was taken)
 ```
 
-Tool-routing layer: `semantic_search` only returns the top-5 similar chunks, which silently gives wrong/incomplete answers for questions like "what anime have more than 100 episodes" (needs to scan all 250 rows, not top-5 by similarity). The router forces the model to pick `semantic_search` or `filter_lookup` per question via real function-calling (not a manual classifier prompt) before answering. Verified: open-weight models sometimes emit a hallucinated answer in `message.content` alongside the real `tool_calls` — the implementation discards `content` and only trusts the executed tool result.
+Corpus is SFW: the AniList fetch query hard-filters `isAdult: false`, so adult-tagged entries never enter the pipeline.
 
-Note: `BAAI/bge-*` embedding models and `meta-llama/Llama-3.3-*-Free` chat models require a paid dedicated endpoint on Together — not available on free-tier accounts despite being listed in the catalog. Stuck to models confirmed serverless-accessible by testing directly against the API.
+Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat models are catalog-listed on Together but require a paid dedicated endpoint — the models above were confirmed serverless-accessible by testing directly against the API.
 
 ## Setup
 
-1. **Supabase**: create a project, open SQL editor, run `supabase/schema.sql`. Grab the project URL + service role key (Settings > API).
+1. **Supabase**: create a project, run `supabase/schema.sql` in the SQL editor. Grab the project URL + service role key (Settings > API).
 2. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
-5. `python ingest/run_ingest.py --pages 5` (5 pages x 50 = 250 anime entries to start; bump later)
-6. Fill in `eval/qa_pairs.json` with real questions once you know what got ingested (don't guess trivia before the corpus exists — see note in that file).
-7. `python eval/eval.py` — prints precision@k + answer-match rate.
-8. `npm install && vercel dev` locally, then `vercel --prod` to deploy.
+5. `python ingest/run_ingest.py --pages 5` (5 pages x 50 = 250 anime entries)
+6. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
+7. `npm install && vercel dev` locally, `vercel --prod` to deploy.
 
-## Content policy
+## Roadmap
 
-Fetch query hard-filters `isAdult: false` at the AniList API level — adult-tagged entries never enter the pipeline. This is a deliberate, from-scratch corpus with no connection to any other project.
+- **Held-out eval set** (40–50 questions the router fix wasn't tuned against) — tests whether the routing fix generalizes.
+- Jikan/MyAnimeList reviews as a second text source for opinion-based questions.
 
-## Eval results
+## License
 
-250 anime entries ingested. 22-question hand-labeled eval set — 8 metadata lookups, 12 synopsis/plot questions (semantic route), 2 structured questions (filter route, e.g. "what anime have more than 150 episodes"). `eval.py` now runs every question through the same router as production (real tool-calling, not a hardcoded route per question):
-
-- Route match rate (router picked the expected path): 18/22 = 82%
-- Retrieval hit rate: 17/22 = 77%
-- Answer keyword match rate: 17/22 = 77%
-
-Honest read: the router is not perfect, and that's the real finding, not a bug to hide. Two concrete failure modes observed and reproducible via `python eval/eval.py`:
-1. Plot questions occasionally get misrouted to `filter_lookup` (e.g. "what creatures devour humans in Attack on Titan" — a synopsis question — got classified as structured and returned "No matching anime found").
-2. `filter_lookup` sometimes extracts wrong or empty arguments for legitimate structured questions (the "which anime are movies" question returned no results — the model didn't pass `format: "MOVIE"` correctly).
-
-The earlier 100%/100% numbers (previous README revision) were measured before the router existed, i.e. semantic-search-only. Adding the router improved real correctness (structured questions now get accurate whole-corpus answers instead of top-5-similarity guesses) but introduced routing error as a new, measurable failure surface — the tradeoff is real and this is what "I added an eval and it changed my story" actually looks like.
-
-### Fix and re-eval (commit `45c27b5`)
-
-Both failure modes above had an identifiable cause: the router's tool descriptions didn't state the disambiguation rule ("named-title plot question always wins even if phrased as 'what X'") and the `filter_lookup` `format` param had no enum, so the model sometimes dropped it. Tightened both tool descriptions and the router system prompt to state these rules explicitly, then re-ran `eval.py` unchanged:
-
-- Route match rate: 22/22 = 100% (was 82%)
-- Retrieval hit rate: 22/22 = 100% (was 77%)
-- Answer keyword match rate: 22/22 = 100% (was 77%)
-
-Caveat, not a victory lap: this is the same 22-question set that diagnosed the two bugs, so hitting 100% mostly confirms those two specific fixes worked — it is not proof the router generalizes to unseen phrasing, and N=22 is too small to treat any of these numbers as statistically meaningful. Treat this as a regression check that passed, not a claim that routing is now "solved." The honest next step, if this project continues, is a larger held-out eval set the fixes weren't tuned against.
-
-## Resume bullet
-
-> Built SenpAI, a production RAG assistant over 250+ anime/manga entries with a tool-routing layer (semantic search vs. structured SQL filter) chosen via real function-calling, by combining AniList metadata ingestion, Together AI embeddings/inference, and Supabase pgvector retrieval — deployed live on Vercel at senpai-seven.vercel.app. Eval harness (22 hand-labeled questions) caught a genuine 82% routing accuracy, diagnosed two concrete failure modes, and closed both via a prompt fix validated by re-running the same eval.
-
-## Phase 2
-
-- ~~Function-calling / tool-routing layer (RAG vs. structured lookup)~~ — done. `api/chat.js` routes between `semantic_search` and `filter_lookup` via real tool-calling.
-- ~~Eval coverage for the routing layer~~ — done. `eval.py` now routes every question the same way production does; see real 82%/77%/77% numbers above.
-- ~~Tighten the router's system prompt / tool descriptions~~ — done, see "Fix and re-eval" above. Eval moved to 100%/100%/100%, but N=22 is the same set that diagnosed the bugs — not proof of generalization.
-- **Next real improvement, not done:** build a larger, held-out eval set (40-50 questions the router wasn't tuned against) to check whether the fix actually generalizes or just patched these two specific cases.
-- Jikan/MyAnimeList reviews as a second text source (richer opinion-based questions) — not started.
+MIT

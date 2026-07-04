@@ -1,6 +1,7 @@
 """Eval harness: retrieval hit rate + answer accuracy across both routing paths."""
 import json
 import os
+import re
 from pathlib import Path
 
 import requests
@@ -9,9 +10,10 @@ from supabase import create_client
 
 load_dotenv()
 
-TOGETHER_API_KEY = os.environ["TOGETHER_API_KEY"]
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+# .get() so the module imports without credentials (e.g. in CI); network calls still require them
+TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
 EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
 CHAT_MODEL = "openai/gpt-oss-20b"  # open-weight, serverless-accessible on this account
@@ -140,6 +142,24 @@ def generate_answer(question: str, route_name: str, results: list[dict]) -> str:
     return data["choices"][0]["message"]["content"]
 
 
+def retrieval_hit(pair: dict, retrieved_titles: set[str]) -> bool:
+    if pair.get("expected_title"):
+        return pair["expected_title"] in retrieved_titles
+    if pair.get("expected_titles_any"):
+        return bool(retrieved_titles & set(pair["expected_titles_any"]))
+    return False
+
+
+def _norm(text: str) -> str:
+    # models sometimes emit unicode spaces (e.g. U+202F in "Pirate King") that break exact substring match
+    return re.sub(r"\s+", " ", text.lower())
+
+
+def keyword_hit(pair: dict, answer: str) -> bool:
+    normalized = _norm(answer)
+    return any(_norm(kw) in normalized for kw in pair.get("expected_keywords", []))
+
+
 def run_eval(qa_pairs: list[dict]) -> None:
     route_matches, retrieval_hits, keyword_matches, total = 0, 0, 0, 0
     for pair in qa_pairs:
@@ -161,15 +181,11 @@ def run_eval(qa_pairs: list[dict]) -> None:
             results = semantic_search(pair["question"])
             retrieved_titles = {c["title"] for c in results}
 
-        if pair.get("expected_title"):
-            if pair["expected_title"] in retrieved_titles:
-                retrieval_hits += 1
-        elif pair.get("expected_titles_any"):
-            if retrieved_titles & set(pair["expected_titles_any"]):
-                retrieval_hits += 1
+        if retrieval_hit(pair, retrieved_titles):
+            retrieval_hits += 1
 
         answer = generate_answer(pair["question"], route_name, results) if results else "No matching anime found."
-        if any(kw.lower() in answer.lower() for kw in pair.get("expected_keywords", [])):
+        if keyword_hit(pair, answer):
             keyword_matches += 1
         print(f"Q: {pair['question']}\n[{route_name}] A: {answer}\n")
 
