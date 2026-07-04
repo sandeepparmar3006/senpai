@@ -49,15 +49,7 @@ function addBubble(role, text, sources, route) {
   row.appendChild(bubble);
 
   if (sources && sources.length) {
-    const list = document.createElement("div");
-    list.className = "sources";
-    for (const s of sources) {
-      const pill = document.createElement("span");
-      pill.className = "source-pill";
-      pill.textContent = s.title;
-      list.appendChild(pill);
-    }
-    bubble.appendChild(list);
+    appendSources(row, sources);
   }
 
   messages.appendChild(row);
@@ -66,7 +58,20 @@ function addBubble(role, text, sources, route) {
   } else {
     scrollLatestBtn.classList.add("visible");
   }
-  return row;
+  return { row, textEl };
+}
+
+function appendSources(row, sources) {
+  const bubble = row.querySelector(".bubble");
+  const list = document.createElement("div");
+  list.className = "sources";
+  for (const s of sources) {
+    const pill = document.createElement("span");
+    pill.className = "source-pill";
+    pill.textContent = s.title;
+    list.appendChild(pill);
+  }
+  bubble.appendChild(list);
 }
 
 function addTypingIndicator() {
@@ -98,13 +103,64 @@ async function ask(query) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
-    const data = await resp.json();
-    removeTypingIndicator();
-    if (data.error) {
-      addBubble("error", data.error);
+
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      removeTypingIndicator();
+      addBubble("error", data.error || "Something went wrong reaching SenpAI. Try again in a moment.");
       return;
     }
-    addBubble("assistant", data.answer, data.sources, data.route);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let meta = { route: null, sources: [] };
+    let answer = "";
+    let assistant = null;
+    let autoScroll = false;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop();
+
+      for (const evt of events) {
+        let eventName = "message";
+        let dataStr = "";
+        for (const line of evt.split("\n")) {
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+        }
+        if (!dataStr) continue;
+        const data = JSON.parse(dataStr);
+
+        if (eventName === "meta") {
+          meta = data;
+        } else if (eventName === "token") {
+          if (!assistant) {
+            removeTypingIndicator();
+            autoScroll = isNearBottom();
+            assistant = addBubble("assistant", "", null, meta.route);
+            const cursor = document.createElement("span");
+            cursor.className = "stream-cursor";
+            assistant.row.querySelector(".bubble").appendChild(cursor);
+          }
+          answer += data.text;
+          assistant.textEl.textContent = answer;
+          if (autoScroll) scrollToBottom(false);
+        } else if (eventName === "error") {
+          removeTypingIndicator();
+          addBubble("error", data.message);
+        } else if (eventName === "done") {
+          if (assistant) {
+            assistant.row.querySelector(".stream-cursor")?.remove();
+            if (meta.sources?.length) appendSources(assistant.row, meta.sources);
+          }
+        }
+      }
+    }
   } catch (err) {
     removeTypingIndicator();
     addBubble("error", "Something went wrong reaching SenpAI. Try again in a moment.");

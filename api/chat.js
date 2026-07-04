@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { Readable } from "node:stream";
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
@@ -125,18 +126,50 @@ function buildContext(routeName, results) {
   return results.map((c) => `[${c.title}] ${c.chunk_text}`).join("\n\n");
 }
 
-async function generate(question, routeName, results) {
+async function streamGenerate(res, question, routeName, results) {
   const context = buildContext(routeName, results);
-  const data = await chatCompletion({
-    messages: [
-      {
-        role: "system",
-        content: "Answer only using the provided context. Cite anime titles in brackets.",
-      },
-      { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
-    ],
+  const resp = await fetch("https://api.together.xyz/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${TOGETHER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: CHAT_MODEL,
+      stream: true,
+      messages: [
+        { role: "system", content: "Answer only using the provided context. Cite anime titles in brackets." },
+        { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
+      ],
+    }),
   });
-  return data.choices[0].message.content;
+
+  if (!resp.ok || !resp.body) {
+    throw new Error(`Together stream request failed: ${resp.status}`);
+  }
+
+  let buffer = "";
+  for await (const chunk of Readable.fromWeb(resp.body)) {
+    buffer += chunk.toString("utf8");
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+      const token = parsed.choices?.[0]?.delta?.content;
+      if (token) {
+        res.write(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
+      }
+    }
+  }
 }
 
 export default async function handler(req, res) {
@@ -150,28 +183,45 @@ export default async function handler(req, res) {
     return;
   }
 
-  const toolCall = await route(query);
-  const routeName = toolCall?.function?.name === "filter_lookup" ? "filter_lookup" : "semantic_search";
-
-  let results;
-  if (routeName === "filter_lookup") {
-    const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-    results = await filterLookup(args);
-  } else {
-    const args = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
-    results = await semanticSearch(args.query || query);
-  }
-
-  if (results.length === 0) {
-    res.status(200).json({ answer: "No matching anime found in the database.", sources: [], route: routeName });
+  let toolCall, routeName, results;
+  try {
+    toolCall = await route(query);
+    routeName = toolCall?.function?.name === "filter_lookup" ? "filter_lookup" : "semantic_search";
+    if (routeName === "filter_lookup") {
+      const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
+      results = await filterLookup(args);
+    } else {
+      const args = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
+      results = await semanticSearch(args.query || query);
+    }
+  } catch (err) {
+    res.status(502).json({ error: "Lookup failed. Try again in a moment." });
     return;
   }
 
-  const answer = await generate(query, routeName, results);
-
-  res.status(200).json({
-    answer,
-    sources: results.map((r) => ({ title: r.title, source_id: r.source_id })),
-    route: routeName,
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
   });
+
+  if (results.length === 0) {
+    res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, sources: [] })}\n\n`);
+    res.write(`event: token\ndata: ${JSON.stringify({ text: "No matching anime found in the database." })}\n\n`);
+    res.write(`event: done\ndata: {}\n\n`);
+    res.end();
+    return;
+  }
+
+  const sources = results.map((r) => ({ title: r.title, source_id: r.source_id }));
+  res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, sources })}\n\n`);
+
+  try {
+    await streamGenerate(res, query, routeName, results);
+  } catch (err) {
+    res.write(`event: error\ndata: ${JSON.stringify({ message: "Stream interrupted. Partial answer shown." })}\n\n`);
+  }
+
+  res.write(`event: done\ndata: {}\n\n`);
+  res.end();
 }
