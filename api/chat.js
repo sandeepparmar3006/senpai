@@ -8,6 +8,23 @@ const K = 5;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// Spend/abuse guard: public endpoint calls a paid LLM per request.
+// Per-IP cap deters casual abuse; the global daily ceiling bounds worst-case
+// daily spend even under distributed abuse. Fail-open on limiter errors so a
+// rate_limits outage never takes the whole app down.
+const IP_LIMIT = { max: 15, windowSeconds: 60 };
+const GLOBAL_LIMIT = { max: 1000, windowSeconds: 86400 };
+
+async function withinLimit(bucket, { max, windowSeconds }) {
+  const { data, error } = await supabase.rpc("check_rate_limit", {
+    bucket_key: bucket,
+    max_count: max,
+    window_seconds: windowSeconds,
+  });
+  if (error) return true; // fail-open: don't let limiter downtime break chat
+  return data === true;
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -180,6 +197,16 @@ export default async function handler(req, res) {
   const { query } = req.body;
   if (!query) {
     res.status(400).json({ error: "query required" });
+    return;
+  }
+
+  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
+  const [ipOk, globalOk] = await Promise.all([
+    withinLimit(`ip:${ip}:min`, IP_LIMIT),
+    withinLimit("global:day", GLOBAL_LIMIT),
+  ]);
+  if (!ipOk || !globalOk) {
+    res.status(429).json({ error: "Busy right now — give it a minute and try again." });
     return;
   }
 
