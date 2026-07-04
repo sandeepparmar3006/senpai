@@ -32,13 +32,18 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          genre: { type: "string", description: "A single genre to filter by, e.g. Horror, Romance, Action" },
+          genre: {
+            type: "string",
+            description: "A single genre to filter by. Case-sensitive — use the exact capitalization from this list.",
+            enum: ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"],
+          },
           min_episodes: { type: "integer" },
           max_episodes: { type: "integer" },
           format: {
             type: "string",
             description:
-              "Exact uppercase format code: TV, MOVIE, OVA, ONA, SPECIAL, or MUSIC. If the question asks which entries are 'movies', set this to \"MOVIE\".",
+              "Exact uppercase format code. If the question asks which entries are 'movies', set this to \"MOVIE\"; 'TV shorts' means TV_SHORT.",
+            enum: ["TV", "TV_SHORT", "MOVIE", "OVA", "ONA", "SPECIAL", "MUSIC"],
           },
         },
       },

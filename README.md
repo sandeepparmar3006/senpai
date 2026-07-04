@@ -42,6 +42,19 @@ Two smaller findings from repeat runs, kept because they're what eval work actua
 - **Routing is sampled**, so route match occasionally drops a question run-to-run (21/22 observed on one re-run). Single-run numbers on N=22 carry real variance.
 - **One "failure" was a scoring bug, not a model bug**: the model emitted a U+202F narrow no-break space inside "Pirate King", which broke exact substring matching. `keyword_hit()` now normalizes unicode whitespace, with a regression test in `tests/test_eval.py`.
 
+### Held-out eval (45 unseen questions)
+
+`eval/qa_pairs_holdout.json`: 45 new questions (28 semantic with fresh phrasing, 17 structured with ground truth computed from the raw corpus) written after the router fix and never used to tune it. `python eval/eval.py eval/qa_pairs_holdout.json`:
+
+| Run | Route match | Retrieval hit | Answer match |
+|---|---|---|---|
+| First run | 100% (45/45) | 93% (42/45) | 93% (42/45) |
+| After tool-schema fix | 98% (44/45) | 98% (44/45) | 96% (43/45) |
+
+The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
+
+The three remaining misses are reported, not patched: one correct answer rejected by strict keyword scoring ("a single punch" vs. expected "one punch"), one run-to-run route flip that still retrieved the right titles, and one generation-stage misread of the retrieved context. Tuning the held-out set until it hits 100% would defeat its purpose.
+
 ## Architecture
 
 ```
@@ -77,7 +90,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 
 ## Roadmap
 
-- **Held-out eval set** (40–50 questions the router fix wasn't tuned against) — tests whether the routing fix generalizes.
+- ~~Held-out eval set~~ — done, see "Held-out eval" above.
 - Jikan/MyAnimeList reviews as a second text source for opinion-based questions.
 
 ## License
