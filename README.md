@@ -3,13 +3,15 @@
 [![CI](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer is grounded in retrieved sources and shows which retrieval path it took.
+RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer streams token-by-token, is grounded in retrieved sources, and ships a collapsible panel showing exactly which retrieval path it took and why.
 
 **Live demo: [senpai-seven.vercel.app](https://senpai-seven.vercel.app)**
 
 | Semantic route | Structured route |
 |---|---|
-| ![Semantic search answering a plot/metadata question with source citations](docs/screenshot-semantic.png) | ![Structured lookup scanning the whole corpus for episode-count filters](docs/screenshot-filter.png) |
+| ![Semantic search answering a plot/metadata question, with the "How this was found" panel open showing per-source cosine similarity scores](docs/screenshot-semantic.png) | ![Structured lookup filtering the whole corpus by episode count, with the panel open showing the filter criteria and episode counts per result](docs/screenshot-filter.png) |
+
+Both screenshots show the **"How this was found" panel** expanded — collapsed by default, it exposes the router's actual decision (search query embedded, or filter criteria applied) and per-source retrieval detail, so the retrieval mechanics are inspectable, not just asserted in this README.
 
 ## Why a router
 
@@ -67,20 +69,24 @@ AniList GraphQL (isAdult: false filtered at fetch time)
    ingest/load_to_supabase.py    -> Supabase pgvector table
         |
    api/chat.js (Vercel function)
+        | check_rate_limit() RPC -> per-IP (15/min) + global (1000/day) cap, fail-open
         | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
-        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC
+        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (returns cosine similarity)
         |   |-- filter_lookup    -> filter_media() RPC
-        | generate(question, route_results) -> Together chat completion w/ citations
-   public/ (chat UI, shows which route was taken)
+        | streamGenerate(question, route_results) -> Together chat completion, stream: true
+        |   -> answer piped to the client as SSE tokens as they're generated
+   public/ (chat UI: renders tokens live, shows route + retrieval detail per answer)
 ```
 
 Corpus is SFW: the AniList fetch query hard-filters `isAdult: false`, so adult-tagged entries never enter the pipeline.
 
 Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat models are catalog-listed on Together but require a paid dedicated endpoint — the models above were confirmed serverless-accessible by testing directly against the API.
 
+**Production hardening**: this is a public URL calling a paid LLM per request with no auth — a real abuse/wallet-drain surface, not a hypothetical one. `check_rate_limit()` (`supabase/rate_limit.sql`) enforces a per-IP cap (15/min) and a global daily ceiling (1000/day) via an atomic Postgres upsert, shared across all serverless instances (in-memory counters reset on every cold start, so they don't work here). It fails open — a `rate_limits` outage degrades to unlimited rather than breaking chat.
+
 ## Setup
 
-1. **Supabase**: create a project, run `supabase/schema.sql` in the SQL editor. Grab the project URL + service role key (Settings > API).
+1. **Supabase**: create a project, run `supabase/schema.sql` and `supabase/rate_limit.sql` in the SQL editor. Grab the project URL + service role key (Settings > API).
 2. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
@@ -91,6 +97,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 ## Roadmap
 
 - ~~Held-out eval set~~ — done, see "Held-out eval" above.
+- ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
 - Jikan/MyAnimeList reviews as a second text source for opinion-based questions.
 
 ## License
