@@ -74,6 +74,55 @@ function appendSources(row, sources) {
   bubble.appendChild(list);
 }
 
+function describeRoute(meta) {
+  if (meta.route === "filter_lookup") {
+    const d = meta.detail || {};
+    const parts = [];
+    if (d.genre) parts.push(`genre: ${d.genre}`);
+    if (d.min_episodes != null) parts.push(`min episodes: ${d.min_episodes}`);
+    if (d.max_episodes != null) parts.push(`max episodes: ${d.max_episodes}`);
+    if (d.format) parts.push(`format: ${d.format}`);
+    return `Filtered the full corpus by ${parts.join(", ") || "no criteria"}.`;
+  }
+  return `Embedded the question and ran a cosine-similarity search for: "${meta.detail?.searchQuery ?? ""}".`;
+}
+
+function appendHowItWorks(row, meta) {
+  const bubble = row.querySelector(".bubble");
+  const details = document.createElement("details");
+  details.className = "how-it-works";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "How this was found";
+  details.appendChild(summary);
+
+  const body = document.createElement("div");
+  body.className = "how-body";
+
+  const desc = document.createElement("p");
+  desc.className = "how-desc";
+  desc.textContent = describeRoute(meta);
+  body.appendChild(desc);
+
+  const list = document.createElement("ul");
+  list.className = "how-list";
+  for (const s of meta.sources || []) {
+    const item = document.createElement("li");
+    const title = document.createElement("span");
+    title.textContent = s.title;
+    const score = document.createElement("span");
+    score.className = "how-score";
+    score.textContent =
+      meta.route === "filter_lookup" ? `${s.episodes ?? "—"} eps · ${s.format ?? "—"}` : `${Math.round(s.similarity * 100)}% match`;
+    item.append(title, score);
+    list.appendChild(item);
+  }
+  body.appendChild(list);
+
+  details.appendChild(body);
+  bubble.appendChild(details);
+}
+
 function addTypingIndicator() {
   const wasNearBottom = isNearBottom();
   const row = document.createElement("div");
@@ -156,7 +205,10 @@ async function ask(query) {
         } else if (eventName === "done") {
           if (assistant) {
             assistant.row.querySelector(".stream-cursor")?.remove();
-            if (meta.sources?.length) appendSources(assistant.row, meta.sources);
+            if (meta.sources?.length) {
+              appendSources(assistant.row, meta.sources);
+              appendHowItWorks(assistant.row, meta);
+            }
           }
         }
       }

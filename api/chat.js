@@ -210,16 +210,15 @@ export default async function handler(req, res) {
     return;
   }
 
-  let toolCall, routeName, results;
+  let toolCall, routeName, results, routeArgs;
   try {
     toolCall = await route(query);
     routeName = toolCall?.function?.name === "filter_lookup" ? "filter_lookup" : "semantic_search";
+    routeArgs = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
     if (routeName === "filter_lookup") {
-      const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-      results = await filterLookup(args);
+      results = await filterLookup(routeArgs);
     } else {
-      const args = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
-      results = await semanticSearch(args.query || query);
+      results = await semanticSearch(routeArgs.query || query);
     }
   } catch (err) {
     res.status(502).json({ error: "Lookup failed. Try again in a moment." });
@@ -232,16 +231,25 @@ export default async function handler(req, res) {
     Connection: "keep-alive",
   });
 
+  const detail =
+    routeName === "filter_lookup"
+      ? { genre: routeArgs.genre ?? null, min_episodes: routeArgs.min_episodes ?? null, max_episodes: routeArgs.max_episodes ?? null, format: routeArgs.format ?? null }
+      : { searchQuery: routeArgs.query || query };
+
   if (results.length === 0) {
-    res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, sources: [] })}\n\n`);
+    res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources: [] })}\n\n`);
     res.write(`event: token\ndata: ${JSON.stringify({ text: "No matching anime found in the database." })}\n\n`);
     res.write(`event: done\ndata: {}\n\n`);
     res.end();
     return;
   }
 
-  const sources = results.map((r) => ({ title: r.title, source_id: r.source_id }));
-  res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, sources })}\n\n`);
+  const sources = results.map((r) =>
+    routeName === "filter_lookup"
+      ? { title: r.title, source_id: r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null }
+      : { title: r.title, source_id: r.source_id, similarity: r.similarity }
+  );
+  res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources })}\n\n`);
 
   try {
     await streamGenerate(res, query, routeName, results);
