@@ -10,6 +10,7 @@
   --color-border: #38343d;
   --color-destructive: #ef4444;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", Meiryo, Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
   --radius: 14px;
   --space-1: 4px;
   --space-2: 8px;
@@ -181,14 +182,56 @@ h1 {
 }
 
 .empty-state {
+  position: relative;
   margin: auto;
   text-align: center;
   color: var(--color-muted);
   padding: 0 var(--space-3);
 }
 
+.tategaki {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--space-3) * -1);
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 0.35em;
+  color: var(--color-muted);
+  opacity: 0.45;
+  user-select: none;
+}
+
+.empty-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto var(--space-4);
+  border-radius: 24px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
+  font-family: var(--font-serif);
+  font-size: 44px;
+  font-weight: 600;
+}
+
+.empty-mark::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(214, 96, 63, 0.14), transparent 65%);
+  pointer-events: none;
+}
+
 .empty-heading {
-  font-size: 22px;
+  font-family: var(--font-serif);
+  font-size: 26px;
   font-weight: 700;
   color: var(--color-foreground);
   margin: 0 0 var(--space-2);
@@ -266,8 +309,11 @@ h1 {
 }
 
 .bubble-row.assistant .bubble {
+  max-width: 100%;
+  width: 100%;
   background: var(--color-surface);
-  border-bottom-left-radius: 4px;
+  border: 1px solid var(--color-border);
+  padding: var(--space-3);
 }
 
 .bubble-row.error .bubble {
@@ -296,19 +342,87 @@ h1 {
 }
 
 .sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
 }
 
-.source-pill {
-  font-size: 12px;
-  color: var(--color-muted);
+.source-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 3px 10px;
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  min-width: 0;
+}
+
+.source-thumb {
+  width: 40px;
+  height: 56px;
+  min-width: 40px;
+  border-radius: 6px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.source-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.source-thumb.loaded img {
+  opacity: 1;
+}
+
+.source-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.source-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.source-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 11px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.meter {
+  width: 48px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
 }
 
 .how-it-works {
@@ -350,29 +464,8 @@ h1 {
 }
 
 .how-desc {
-  margin: 0 0 var(--space-1);
-  color: var(--color-muted);
-}
-
-.how-list {
-  list-style: none;
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.how-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  color: var(--color-foreground);
-}
-
-.how-score {
-  color: var(--color-accent);
-  white-space: nowrap;
+  color: var(--color-muted);
 }
 
 .typing-indicator {
@@ -537,6 +630,9 @@ h1 {
     max-width: 90%;
   }
   .empty-heading {
-    font-size: 19px;
+    font-size: 21px;
+  }
+  .tategaki {
+    display: none;
   }
 }

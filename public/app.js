@@ -49,7 +49,7 @@ function addBubble(role, text, sources, route) {
   row.appendChild(bubble);
 
   if (sources && sources.length) {
-    appendSources(row, sources);
+    appendSources(row, sources, route);
   }
 
   messages.appendChild(row);
@@ -61,17 +61,87 @@ function addBubble(role, text, sources, route) {
   return { row, textEl };
 }
 
-function appendSources(row, sources) {
+const coverCache = new Map();
+
+async function fetchCovers(ids) {
+  const missing = ids.filter((id) => id != null && !coverCache.has(String(id)));
+  if (missing.length) {
+    try {
+      const resp = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: "query($ids:[Int]){Page(perPage:25){media(id_in:$ids){id coverImage{medium color}}}}",
+          variables: { ids: missing.map(Number) },
+        }),
+      });
+      const data = await resp.json();
+      for (const m of data?.data?.Page?.media || []) {
+        coverCache.set(String(m.id), m.coverImage || {});
+      }
+    } catch {
+      /* covers are decoration; cards render without them */
+    }
+    for (const id of missing) if (!coverCache.has(String(id))) coverCache.set(String(id), {});
+  }
+  return coverCache;
+}
+
+function appendSources(row, sources, route) {
   const bubble = row.querySelector(".bubble");
   const list = document.createElement("div");
   list.className = "sources";
-  for (const s of sources) {
-    const pill = document.createElement("span");
-    pill.className = "source-pill";
-    pill.textContent = s.title;
-    list.appendChild(pill);
-  }
+  const cards = sources.map((s) => {
+    const card = document.createElement("div");
+    card.className = "source-card";
+
+    const thumb = document.createElement("div");
+    thumb.className = "source-thumb";
+    card.appendChild(thumb);
+
+    const info = document.createElement("div");
+    info.className = "source-info";
+    const title = document.createElement("span");
+    title.className = "source-title";
+    title.textContent = s.title;
+    info.appendChild(title);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    if (route === "filter_lookup") {
+      meta.textContent = `${s.episodes ?? "-"} eps · ${s.format ?? "-"}`;
+    } else if (s.similarity != null) {
+      const pct = Math.round(s.similarity * 100);
+      const meter = document.createElement("span");
+      meter.className = "meter";
+      meter.setAttribute("aria-hidden", "true");
+      const fill = document.createElement("span");
+      fill.style.width = `${pct}%`;
+      meter.appendChild(fill);
+      const label = document.createElement("span");
+      label.textContent = `${pct}% match`;
+      meta.append(meter, label);
+    }
+    info.appendChild(meta);
+    card.appendChild(info);
+    list.appendChild(card);
+    return { card, thumb, id: s.source_id };
+  });
   bubble.appendChild(list);
+
+  fetchCovers(cards.map((c) => c.id)).then((cache) => {
+    for (const { thumb, id } of cards) {
+      const cover = cache.get(String(id));
+      if (cover?.medium) {
+        const img = document.createElement("img");
+        img.src = cover.medium;
+        img.alt = "";
+        img.loading = "lazy";
+        thumb.appendChild(img);
+        thumb.classList.add("loaded");
+      }
+    }
+  });
 }
 
 function describeRoute(meta) {
@@ -103,21 +173,6 @@ function appendHowItWorks(row, meta) {
   desc.className = "how-desc";
   desc.textContent = describeRoute(meta);
   body.appendChild(desc);
-
-  const list = document.createElement("ul");
-  list.className = "how-list";
-  for (const s of meta.sources || []) {
-    const item = document.createElement("li");
-    const title = document.createElement("span");
-    title.textContent = s.title;
-    const score = document.createElement("span");
-    score.className = "how-score";
-    score.textContent =
-      meta.route === "filter_lookup" ? `${s.episodes ?? "—"} eps · ${s.format ?? "—"}` : `${Math.round(s.similarity * 100)}% match`;
-    item.append(title, score);
-    list.appendChild(item);
-  }
-  body.appendChild(list);
 
   details.appendChild(body);
   bubble.appendChild(details);
@@ -206,7 +261,7 @@ async function ask(query) {
           if (assistant) {
             assistant.row.querySelector(".stream-cursor")?.remove();
             if (meta.sources?.length) {
-              appendSources(assistant.row, meta.sources);
+              appendSources(assistant.row, meta.sources, meta.route);
               appendHowItWorks(assistant.row, meta);
             }
           }
