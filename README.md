@@ -60,19 +60,20 @@ The three remaining misses are reported, not patched: one correct answer rejecte
 ## Architecture
 
 ```
-AniList GraphQL (isAdult: false filtered at fetch time)
-        |
-   ingest/fetch_anilist.py       -> data/raw_anilist.json
-        |
-   ingest/chunk_and_embed.py     -> data/embedded.json
-        | (Together AI embeddings, intfloat/multilingual-e5-large-instruct, 1024-dim)
-   ingest/load_to_supabase.py    -> Supabase pgvector table
+AniList GraphQL (isAdult: false filtered at fetch time)        Jikan/MAL reviews API
+        |                                                              |
+   ingest/fetch_anilist.py       -> data/raw_anilist.json    ingest/fetch_jikan_reviews.py -> data/raw_reviews.json
+        |                                                              |
+   ingest/chunk_and_embed.py     -> data/embedded.json    ingest/chunk_and_embed_reviews.py -> data/embedded_reviews.json
+        | (Together AI embeddings, intfloat/multilingual-e5-large-instruct, 1024-dim, both sources)
+   ingest/load_to_supabase.py    -> Supabase pgvector table (source: "anilist" | "jikan_review")
         |
    api/chat.js (Vercel function)
         | check_rate_limit() RPC -> per-IP (15/min) + global (1000/day) cap, fail-open
         | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
-        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (returns cosine similarity)
+        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (source: anilist, cosine similarity)
         |   |-- filter_lookup    -> filter_media() RPC
+        |   |-- opinion_search   -> embed query -> match_media_chunks() RPC (source: jikan_review)
         | streamGenerate(question, route_results) -> Together chat completion, stream: true
         |   -> answer piped to the client as SSE tokens as they're generated
    public/ (chat UI: renders tokens live, shows route + retrieval detail per answer)
@@ -91,14 +92,15 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
 5. `python ingest/run_ingest.py --pages 5` (5 pages x 50 = 250 anime entries)
-6. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
-7. `npm install && vercel dev` locally, `vercel --prod` to deploy.
+6. `python ingest/run_ingest_reviews.py` — fetches MAL reviews via Jikan for entries with an `idMal`, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
+7. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
+8. `npm install && vercel dev` locally, `vercel --prod` to deploy.
 
 ## Roadmap
 
 - ~~Held-out eval set~~ — done, see "Held-out eval" above.
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
-- Jikan/MyAnimeList reviews as a second text source for opinion-based questions.
+- ~~Jikan/MyAnimeList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
 
 ## License
 

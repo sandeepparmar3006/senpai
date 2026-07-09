@@ -14,11 +14,11 @@ SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 BATCH_SIZE = 100
 
 
-def load(chunks: list[dict]) -> int:
+def load(chunks: list[dict], source: str = "anilist") -> int:
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     rows = [
         {
-            "source": "anilist",
+            "source": source,
             "source_id": c["source_id"],
             "title": c["title"],
             "chunk_text": c["chunk_text"],

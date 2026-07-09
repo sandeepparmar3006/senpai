@@ -67,6 +67,21 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "opinion_search",
+      description:
+        "Search fan reviews for opinion, reception, or recommendation questions about a specific named anime — e.g. 'is X good', 'is X worth watching', 'what do people think of X', 'how is the pacing in X'. Do not use for plot/character/terminology questions (use semantic_search) or whole-corpus filters (use filter_lookup).",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The search query" },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];
 
 async function chatCompletion(body) {
@@ -88,7 +103,8 @@ async function route(question) {
         role: "system",
         content:
           "Decide how to answer the user's anime/manga question by calling exactly one tool. " +
-          "If the question names a specific anime and asks about its plot, characters, or details, always choose semantic_search, even if phrased as 'what X'. " +
+          "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. " +
+          "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. " +
           "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format.",
       },
       { role: "user", content: question },
@@ -113,11 +129,12 @@ async function embed(text) {
   return data.data[0].embedding;
 }
 
-async function semanticSearch(searchQuery) {
+async function semanticSearch(searchQuery, sourceFilter = null) {
   const embedding = await embed(searchQuery);
   const { data, error } = await supabase.rpc("match_media_chunks", {
     query_embedding: embedding,
     match_count: K,
+    source_filter: sourceFilter,
   });
   if (error) throw error;
   return data;
@@ -143,6 +160,9 @@ function buildContext(routeName, results) {
   return results.map((c) => `[${c.title}] ${c.chunk_text}`).join("\n\n");
 }
 
+const OPINION_SYSTEM_PROMPT =
+  "Answer only using the provided fan reviews. Summarize the overall reception, note disagreement between reviewers if present, and cite anime titles in brackets. Don't present one reviewer's opinion as universal consensus.";
+
 async function streamGenerate(res, question, routeName, results) {
   const context = buildContext(routeName, results);
   const resp = await fetch("https://api.together.xyz/v1/chat/completions", {
@@ -155,7 +175,13 @@ async function streamGenerate(res, question, routeName, results) {
       model: CHAT_MODEL,
       stream: true,
       messages: [
-        { role: "system", content: "Answer only using the provided context. Cite anime titles in brackets." },
+        {
+          role: "system",
+          content:
+            routeName === "opinion_search"
+              ? OPINION_SYSTEM_PROMPT
+              : "Answer only using the provided context. Cite anime titles in brackets.",
+        },
         { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
       ],
     }),
@@ -213,10 +239,13 @@ export default async function handler(req, res) {
   let toolCall, routeName, results, routeArgs;
   try {
     toolCall = await route(query);
-    routeName = toolCall?.function?.name === "filter_lookup" ? "filter_lookup" : "semantic_search";
+    const calledName = toolCall?.function?.name;
+    routeName = calledName === "filter_lookup" || calledName === "opinion_search" ? calledName : "semantic_search";
     routeArgs = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
     if (routeName === "filter_lookup") {
       results = await filterLookup(routeArgs);
+    } else if (routeName === "opinion_search") {
+      results = await semanticSearch(routeArgs.query || query, "jikan_review");
     } else {
       results = await semanticSearch(routeArgs.query || query);
     }
@@ -244,11 +273,17 @@ export default async function handler(req, res) {
     return;
   }
 
-  const sources = results.map((r) =>
-    routeName === "filter_lookup"
-      ? { title: r.title, source_id: r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null }
-      : { title: r.title, source_id: r.source_id, similarity: r.similarity }
-  );
+  const sources = results.map((r) => {
+    if (routeName === "filter_lookup") {
+      return { title: r.title, source_id: r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null };
+    }
+    if (routeName === "opinion_search") {
+      // source_id is a review id (mal-review composite); anilist_id in metadata is what the
+      // client needs to fetch cover art, so it's surfaced as source_id here instead.
+      return { title: r.title, source_id: r.metadata?.anilist_id ?? null, similarity: r.similarity, score: r.metadata?.score ?? null };
+    }
+    return { title: r.title, source_id: r.source_id, similarity: r.similarity };
+  });
   res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources })}\n\n`);
 
   try {

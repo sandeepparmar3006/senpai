@@ -56,6 +56,18 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "opinion_search",
+            "description": "Search fan reviews for opinion, reception, or recommendation questions about a specific named anime — e.g. 'is X good', 'is X worth watching', 'what do people think of X', 'how is the pacing in X'. Do not use for plot/character/terminology questions (use semantic_search) or whole-corpus filters (use filter_lookup).",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -78,7 +90,8 @@ def route(question: str) -> dict | None:
                     "role": "system",
                     "content": (
                         "Decide how to answer the user's anime/manga question by calling exactly one tool. "
-                        "If the question names a specific anime and asks about its plot, characters, or details, always choose semantic_search, even if phrased as 'what X'. "
+                        "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. "
+                        "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. "
                         "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format."
                     ),
                 },
@@ -103,10 +116,12 @@ def embed_query(text: str) -> list[float]:
     return resp.json()["data"][0]["embedding"]
 
 
-def semantic_search(query: str, k: int = K) -> list[dict]:
+def semantic_search(query: str, k: int = K, source_filter: str | None = None) -> list[dict]:
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     embedding = embed_query(query)
-    result = client.rpc("match_media_chunks", {"query_embedding": embedding, "match_count": k}).execute()
+    result = client.rpc(
+        "match_media_chunks", {"query_embedding": embedding, "match_count": k, "source_filter": source_filter}
+    ).execute()
     return result.data
 
 
@@ -173,15 +188,19 @@ def run_eval(qa_pairs: list[dict]) -> None:
         total += 1
 
         tool_call = route(pair["question"])
-        route_name = "filter_lookup" if tool_call and tool_call["function"]["name"] == "filter_lookup" else "semantic_search"
+        called_name = tool_call["function"]["name"] if tool_call else None
+        route_name = called_name if called_name in ("filter_lookup", "opinion_search") else "semantic_search"
         expected_route = pair.get("expected_route", "semantic_search")
         if route_name == expected_route:
             route_matches += 1
 
+        args = json.loads(tool_call["function"]["arguments"]) if tool_call and tool_call["function"].get("arguments") else {}
         if route_name == "filter_lookup":
-            args = json.loads(tool_call["function"]["arguments"]) if tool_call and tool_call["function"].get("arguments") else {}
             results = filter_lookup(args)
             retrieved_titles = {r["title"] for r in results}
+        elif route_name == "opinion_search":
+            results = semantic_search(args.get("query") or pair["question"], source_filter="jikan_review")
+            retrieved_titles = {c["title"] for c in results}
         else:
             results = semantic_search(pair["question"])
             retrieved_titles = {c["title"] for c in results}

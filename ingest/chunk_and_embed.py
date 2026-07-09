@@ -39,15 +39,21 @@ def build_chunk_text(entry: dict) -> str:
     )
 
 
-def embed_text(text: str) -> list[float]:
-    resp = requests.post(
-        EMBED_URL,
-        headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
-        json={"model": EMBED_MODEL, "input": text},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["data"][0]["embedding"]
+def embed_text(text: str, retries: int = 6) -> list[float]:
+    for attempt in range(retries):
+        try:
+            resp = requests.post(
+                EMBED_URL,
+                headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
+                json={"model": EMBED_MODEL, "input": text},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["data"][0]["embedding"]
+        except requests.exceptions.RequestException:
+            if attempt == retries - 1:
+                raise
+            time.sleep(min(2**attempt, 20))
 
 
 def process(raw_entries: list[dict]) -> list[dict]:

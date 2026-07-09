@@ -39,7 +39,8 @@ function addBubble(role, text, sources, route) {
   if (route) {
     const badge = document.createElement("div");
     badge.className = "route-badge";
-    badge.textContent = route === "filter_lookup" ? "structured lookup" : "semantic search";
+    badge.textContent =
+      route === "filter_lookup" ? "structured lookup" : route === "opinion_search" ? "fan reviews" : "semantic search";
     bubble.appendChild(badge);
   }
 
@@ -110,6 +111,10 @@ function appendSources(row, sources, route) {
     meta.className = "source-meta";
     if (route === "filter_lookup") {
       meta.textContent = `${s.episodes ?? "-"} eps · ${s.format ?? "-"}`;
+    } else if (route === "opinion_search" && s.score != null) {
+      const label = document.createElement("span");
+      label.textContent = `${s.score}/10`;
+      meta.appendChild(label);
     } else if (s.similarity != null) {
       const pct = Math.round(s.similarity * 100);
       const meter = document.createElement("span");
@@ -153,6 +158,9 @@ function describeRoute(meta) {
     if (d.max_episodes != null) parts.push(`max episodes: ${d.max_episodes}`);
     if (d.format) parts.push(`format: ${d.format}`);
     return `Filtered the full corpus by ${parts.join(", ") || "no criteria"}.`;
+  }
+  if (meta.route === "opinion_search") {
+    return `Embedded the question and searched fan reviews for: "${meta.detail?.searchQuery ?? ""}".`;
   }
   return `Embedded the question and ran a cosine-similarity search for: "${meta.detail?.searchQuery ?? ""}".`;
 }

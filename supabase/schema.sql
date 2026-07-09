@@ -17,12 +17,17 @@ create table media_chunks (
 create index if not exists media_chunks_embedding_idx
   on media_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 
-create or replace function match_media_chunks(query_embedding vector(1024), match_count int default 5)
+create or replace function match_media_chunks(
+  query_embedding vector(1024),
+  match_count int default 5,
+  source_filter text default null
+)
 returns table (id bigint, source_id text, title text, chunk_text text, metadata jsonb, similarity float)
 language sql stable
 as $$
   select id, source_id, title, chunk_text, metadata, 1 - (embedding <=> query_embedding) as similarity
   from media_chunks
+  where source_filter is null or source = source_filter
   order by embedding <=> query_embedding
   limit match_count;
 $$;

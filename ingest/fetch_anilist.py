@@ -13,6 +13,7 @@ query ($page: Int, $perPage: Int) {
     pageInfo { hasNextPage }
     media(type: ANIME, isAdult: false, sort: POPULARITY_DESC) {
       id
+      idMal
       title { romaji english }
       description(asHtml: false)
       genres
