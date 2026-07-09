@@ -17,8 +17,9 @@ Each source is a card, not a bare pill: cover art (fetched from AniList), title,
 
 Top-k similarity search silently fails on whole-corpus questions: "which anime have more than 150 episodes?" needs to scan all 250 rows, not the 5 most similar chunks. So the model picks a tool per question via real function-calling (`tool_choice: required`), not a manual classifier prompt:
 
-- `semantic_search` — embed the query, pgvector `match_media_chunks()` RPC (plot/synopsis questions)
+- `semantic_search` — embed the query, pgvector `match_media_chunks()` RPC over AniList synopses (plot/character/terminology questions)
 - `filter_lookup` — `filter_media()` SQL RPC over all rows (genre/episode/format filters, lists, counts)
+- `opinion_search` — same `match_media_chunks()` RPC, filtered to MAL fan reviews instead of synopses (opinion/reception/recommendation questions)
 
 One production detail worth knowing: open-weight models sometimes emit a hallucinated answer in `message.content` *alongside* the real `tool_calls`. The implementation discards `content` and only trusts the executed tool result.
 
