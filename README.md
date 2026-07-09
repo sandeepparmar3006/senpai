@@ -3,15 +3,15 @@
 [![CI](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer streams token-by-token, is grounded in retrieved sources, and ships a collapsible panel showing exactly which retrieval path it took and why.
+RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer streams token-by-token, is grounded in retrieved sources shown as cards with real cover art, and ships a collapsible panel showing exactly which retrieval path it took and why.
 
 **Live demo: [senpai-seven.vercel.app](https://senpai-seven.vercel.app)**
 
 | Semantic route | Structured route |
 |---|---|
-| ![Semantic search answering a plot/metadata question, with the "How this was found" panel open showing per-source cosine similarity scores](docs/screenshot-semantic.png) | ![Structured lookup filtering the whole corpus by episode count, with the panel open showing the filter criteria and episode counts per result](docs/screenshot-filter.png) |
+| ![Semantic search answering a plot question, with source cards showing cover art and per-source cosine similarity meters](docs/screenshot-semantic.png) | ![Structured lookup filtering the whole corpus by episode count, with source cards showing episode counts and format per result](docs/screenshot-filter.png) |
 
-Both screenshots show the **"How this was found" panel** expanded — collapsed by default, it exposes the router's actual decision (search query embedded, or filter criteria applied) and per-source retrieval detail, so the retrieval mechanics are inspectable, not just asserted in this README.
+Each source is a card, not a bare pill: cover art (fetched from AniList), title, and either a similarity meter (semantic route) or episode/format detail (structured route). The **"How this was found" panel**, collapsed by default, expands to the router's actual decision (the embedded search query, or the filter criteria applied) — retrieval mechanics are inspectable, not just asserted in this README.
 
 ## Why a router
 
