@@ -39,16 +39,31 @@ body {
 
 .app {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100dvh;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 var(--space-3);
+  gap: var(--space-4);
+}
+
+.sidebar-hero {
+  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-4);
+  scrollbar-width: none;
+}
+.sidebar-hero::-webkit-scrollbar {
+  display: none;
 }
 
 .app-header {
   padding: var(--space-4) 0 var(--space-3);
-  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -184,11 +199,11 @@ h1 {
 
 .empty-state {
   position: relative;
-  margin: auto;
-  text-align: center;
+  text-align: left;
   color: var(--color-muted);
-  padding: 0 var(--space-5);
+  padding: 0;
   z-index: 1;
+  margin-top: var(--space-3);
 }
 
 .empty-state::before {
@@ -223,15 +238,15 @@ h1 {
   position: relative;
   display: grid;
   place-items: center;
-  width: 88px;
-  height: 88px;
-  margin: 0 auto var(--space-4);
-  border-radius: 24px;
+  width: 64px;
+  height: 64px;
+  margin: 0 0 var(--space-3);
+  border-radius: 20px;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   color: var(--color-accent);
   font-family: var(--font-serif);
-  font-size: 44px;
+  font-size: 32px;
   font-weight: 600;
 }
 
@@ -257,15 +272,13 @@ h1 {
 .empty-lead {
   font-size: 14px;
   color: var(--color-muted);
-  margin: 0 auto var(--space-4);
-  max-width: 40ch;
+  margin: 0 0 var(--space-4);
 }
 
 .suggestions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  margin-top: var(--space-4);
   width: 100%;
 }
 
@@ -702,12 +715,32 @@ h1 {
 }
 
 @media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+    gap: 0;
+  }
+  .sidebar-hero {
+    flex: none;
+    height: auto;
+    position: relative;
+    padding-bottom: 0;
+  }
+  body.chat-active .empty-state {
+    display: none;
+  }
+  .app-header {
+    border-bottom: 1px solid var(--color-border);
+  }
+  .empty-state {
+    text-align: center;
+    padding: 0 var(--space-3);
+  }
+  .empty-mark {
+    margin: 0 auto var(--space-3);
+  }
   .tategaki {
     right: 0;
     opacity: 0.2;
-  }
-  .empty-state {
-    padding: 0 var(--space-3);
   }
 }
 
