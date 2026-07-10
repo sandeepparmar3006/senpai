@@ -2,8 +2,7 @@
 
 Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time, verify in browser after each.
 
-**ACTIVE** — Blocks 1, 2, 3, & 4 shipped and verified. Blocks 5 & 6 not started. Start at Block 5 next.
-
+**ACTIVE** — Blocks 1, 2, 3, 4, & 5 shipped and verified. Block 6 not started. Start at Block 6 next.
 ## Done
 
 ### Block 3 — Streaming polish (verified)
@@ -30,16 +29,17 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 - Vertical accent 先輩に聞け (`.tategaki`, writing-mode vertical-rl, hidden < 480px).
 - Files: `public/index.html`, `public/style.css`.
 
+### Block 5 — Texture, restrained (verified)
+- Faint geometric SVG pattern ~4% opacity behind empty state only via `::before` pseudo-element.
+- Barely-there warm radial gradient at top, masked smoothly.
+- Files: `public/style.css`.
+
 ## New item added 2026-07-09
 
 ### Corpus expansion
 Corpus too small: 250 entries (5 AniList pages, popularity-sorted) means many titles users ask about aren't in the database. Increase page count / add more sources to grow corpus size for experimentation. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged) — not up for reversal.
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
-
-### Block 5 — Texture, restrained
-- Faint asanoha/seigaiha SVG pattern ~3% opacity behind empty state only.
-- Barely-there warm radial gradient at top. No mesh gradients, no purple.
 
 ### Block 6 — Route transparency polish
 - Mostly done via Block 2 (metrics on cards). Remaining: mono numeral styling for %, review whether expander copy needs work.

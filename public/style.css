@@ -188,6 +188,21 @@ h1 {
   text-align: center;
   color: var(--color-muted);
   padding: 0 var(--space-5);
+  z-index: 1;
+}
+
+.empty-state::before {
+  content: "";
+  position: absolute;
+  inset: -150px -50px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: 
+    radial-gradient(circle at top, rgba(214, 96, 63, 0.08) 0%, transparent 60%),
+    url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 40c5.523 0 10-4.477 10-10 0-5.522-4.477-10-10-10v2c4.418 0 8 3.582 8 8s-3.582 8-8 8v2zm20 0c5.523 0 10-4.477 10-10 0-5.522-4.477-10-10-10 0 5.523-4.477 10-10 10-5.522 0-10-4.477-10-10 0-5.522 4.477-10 10-10v2c-4.418 0-8 3.582-8 8s3.582 8 8 8c4.418 0 8-3.582 8-8s-3.582-8-8-8v-2c5.523 0 10 4.477 10 10 0 5.522-4.477 10-10 10zM40 40c-5.523 0-10-4.477-10-10 0-5.522 4.477-10 10-10v2c-4.418 0-8 3.582-8 8s3.582 8 8 8v2z' fill='%23d6603f' fill-opacity='0.04' fill-rule='evenodd'/%3E%3C/svg%3E");
+  background-position: top center;
+  mask-image: radial-gradient(circle at center, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at center, black 10%, transparent 70%);
 }
 
 .tategaki {
