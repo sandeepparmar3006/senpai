@@ -57,4 +57,4 @@ Theme toggle, message history/persistence, markdown rendering, scroll choreograp
 ## Notes
 - Local verify: `preview_start` name `senpai` (global launch.json, `vercel dev` port 3000). Project-level `.claude/launch.json` (`senpai-static`, python http.server 4173) exists but preview tool uses the global one.
 - Deploy is manual: `vercel --prod` (no git integration — same as manga-reader workflow).
-- Changes NOT yet committed or deployed as of session end.
+- **Desktop Layout Experiment (2026-07-10)**: Drafted and implemented a "Split Pane" desktop layout (fixed left hero, scrolling right chat). Reverted after review (`git revert`). Decision: Stick with the single-column, centered layout (`max-width: 960px`) for a more focused chat experience.

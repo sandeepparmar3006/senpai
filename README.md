@@ -108,6 +108,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 - ~~Held-out eval set~~ — done, see "Held-out eval" above.
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
 - ~~Jikan/MyAnimeList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
+- ~~UI Polish (Blocks 1-5)~~ — done: Added streaming token animations, skeleton loaders, suggestion cards, and an immersive empty state with a subtle "quiet otaku" aesthetic.
 
 ## License
 
