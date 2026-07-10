@@ -7,7 +7,7 @@ const scrollLatestBtn = document.getElementById("scroll-latest");
 const header = document.querySelector(".app-header");
 
 function hideEmptyState() {
-  document.body.classList.add("chat-active");
+  if (emptyState) emptyState.remove();
 }
 
 function isNearBottom(threshold = 120) {

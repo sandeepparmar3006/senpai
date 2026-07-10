@@ -17,44 +17,41 @@
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar-hero">
-      <header class="app-header">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">狐</span>
-          <div>
-            <h1>SenpAI</h1>
-            <p class="subtitle">Ask about anime &amp; manga — grounded in real sources, not guesses.</p>
-          </div>
-        </div>
-      </header>
-
-      <div id="empty-state" class="empty-state">
-        <span class="tategaki" aria-hidden="true">先輩に聞け</span>
-        <div class="empty-mark" aria-hidden="true">狐</div>
-        <h2 class="empty-heading">What do you want to know?</h2>
-        <p class="empty-lead">Every answer is grounded in real synopses, genres, and tags — with sources cited.</p>
-        <div class="suggestions-grid">
-          <button type="button" class="suggestion-card" data-query="Is Attack on Titan worth watching?">
-            <span class="card-category">Lore &amp; Opinion</span>
-            <span class="card-query">Is Attack on Titan worth watching?</span>
-            <span class="card-desc">MAL reviews search range</span>
-          </button>
-          <button type="button" class="suggestion-card" data-query="Which anime are movies with more than 100 episodes?">
-            <span class="card-category">Classification</span>
-            <span class="card-query">Which anime are movies with &gt;100 episodes?</span>
-            <span class="card-desc">Structured metadata range</span>
-          </button>
-          <button type="button" class="suggestion-card" data-query="What is equivalent exchange in Fullmetal Alchemist?">
-            <span class="card-category">Terminology</span>
-            <span class="card-query">What is equivalent exchange in FMA?</span>
-            <span class="card-desc">AniList synopses range</span>
-          </button>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">狐</span>
+        <div>
+          <h1>SenpAI</h1>
+          <p class="subtitle">Ask about anime &amp; manga — grounded in real sources, not guesses.</p>
         </div>
       </div>
-    </aside>
+    </header>
 
     <main class="chat-shell">
       <div id="messages" class="messages" aria-live="polite">
+        <div id="empty-state" class="empty-state">
+          <span class="tategaki" aria-hidden="true">先輩に聞け</span>
+          <div class="empty-mark" aria-hidden="true">狐</div>
+          <h2 class="empty-heading">What do you want to know?</h2>
+          <p class="empty-lead">Every answer is grounded in real synopses, genres, and tags — with sources cited.</p>
+          <div class="suggestions-grid">
+            <button type="button" class="suggestion-card" data-query="Is Attack on Titan worth watching?">
+              <span class="card-category">Lore &amp; Opinion</span>
+              <span class="card-query">Is Attack on Titan worth watching?</span>
+              <span class="card-desc">MAL reviews search range</span>
+            </button>
+            <button type="button" class="suggestion-card" data-query="Which anime are movies with more than 100 episodes?">
+              <span class="card-category">Classification</span>
+              <span class="card-query">Which anime are movies with &gt;100 episodes?</span>
+              <span class="card-desc">Structured metadata range</span>
+            </button>
+            <button type="button" class="suggestion-card" data-query="What is equivalent exchange in Fullmetal Alchemist?">
+              <span class="card-category">Terminology</span>
+              <span class="card-query">What is equivalent exchange in FMA?</span>
+              <span class="card-desc">AniList synopses range</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="scrim" aria-hidden="true"></div>
