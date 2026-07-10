@@ -15,7 +15,7 @@ RAG assistant over anime/manga metadata with a **function-calling tool router** 
 
 | Semantic route | Structured route |
 |---|---|
-| ![Semantic search answering a plot question, with source cards showing cover art and per-source cosine similarity meters](docs/screenshot-semantic.png) | ![Structured lookup filtering the whole corpus by episode count, with source cards showing episode counts and format per result](docs/screenshot-filter.png) |
+| ![Semantic search answering a plot question, with source cards showing cover art and per-source cosine similarity meters](docs/screenshot-semantic.png?v=2) | ![Structured lookup filtering the whole corpus by episode count, with source cards showing episode counts and format per result](docs/screenshot-filter.png?v=2) |
 
 Each source is a card, not a bare pill: cover art (fetched from AniList), title, and either a similarity meter (semantic route) or episode/format detail (structured route). The **"How this was found" panel**, collapsed by default, expands to the router's actual decision (the embedded search query, or the filter criteria applied) — retrieval mechanics are inspectable, not just asserted in this README.
 
