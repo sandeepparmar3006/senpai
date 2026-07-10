@@ -41,8 +41,9 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 
 ## New item added 2026-07-09
 
-### Corpus expansion
+### Corpus expansion (DEFERRED)
 Corpus too small: 250 entries (5 AniList pages, popularity-sorted) means many titles users ask about aren't in the database. Increase page count / add more sources to grow corpus size for experimentation. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged) — not up for reversal.
+*Update 2026-07-10: Deferred to avoid incurring additional Together AI embedding API costs for now.*
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
 
