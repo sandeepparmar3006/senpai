@@ -2,8 +2,13 @@
 
 Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time, verify in browser after each.
 
-**ACTIVE** — Blocks 1, 2, 3, 4, & 5 shipped and verified. Block 6 not started. Start at Block 6 next.
+**ACTIVE** — Blocks 1, 2, 3, 4, 5, & 6 shipped and verified.
 ## Done
+
+### Block 6 — Route transparency polish (verified)
+- Applied tabular mono numerals (`font-variant-numeric: tabular-nums`) and a monospace font stack to the percentage/metadata strings on source cards.
+- Polished the expander copy: changed the label to "Retrieval Mechanics" and rewrote the route descriptions to be more technically transparent and descriptive.
+- Files: `public/style.css`, `public/app.js`.
 
 ### Block 3 — Streaming polish (verified)
 - Replaced 3-dot typing indicator with skeleton lines (`.skeleton-lines` containing 3 pulsing `.skeleton-line` components) matching answer shape.
@@ -40,9 +45,6 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 Corpus too small: 250 entries (5 AniList pages, popularity-sorted) means many titles users ask about aren't in the database. Increase page count / add more sources to grow corpus size for experimentation. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged) — not up for reversal.
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
-
-### Block 6 — Route transparency polish
-- Mostly done via Block 2 (metrics on cards). Remaining: mono numeral styling for %, review whether expander copy needs work.
 
 ### Skipped deliberately (do not add)
 Theme toggle, message history/persistence, markdown rendering, scroll choreography.

@@ -154,15 +154,15 @@ function describeRoute(meta) {
     const d = meta.detail || {};
     const parts = [];
     if (d.genre) parts.push(`genre: ${d.genre}`);
-    if (d.min_episodes != null) parts.push(`min episodes: ${d.min_episodes}`);
-    if (d.max_episodes != null) parts.push(`max episodes: ${d.max_episodes}`);
+    if (d.min_episodes != null) parts.push(`min eps: ${d.min_episodes}`);
+    if (d.max_episodes != null) parts.push(`max eps: ${d.max_episodes}`);
     if (d.format) parts.push(`format: ${d.format}`);
-    return `Filtered the full corpus by ${parts.join(", ") || "no criteria"}.`;
+    return `Executed a deterministic database filter over the entire corpus using criteria: ${parts.join(", ") || "none"}.`;
   }
   if (meta.route === "opinion_search") {
-    return `Embedded the question and searched fan reviews for: "${meta.detail?.searchQuery ?? ""}".`;
+    return `Converted question to a vector and performed a semantic similarity search against MAL fan reviews for: "${meta.detail?.searchQuery ?? ""}".`;
   }
-  return `Embedded the question and ran a cosine-similarity search for: "${meta.detail?.searchQuery ?? ""}".`;
+  return `Converted question to a vector and performed a cosine-similarity search against official anime/manga synopses for: "${meta.detail?.searchQuery ?? ""}".`;
 }
 
 function appendHowItWorks(row, meta) {
@@ -171,7 +171,7 @@ function appendHowItWorks(row, meta) {
   details.className = "how-it-works";
 
   const summary = document.createElement("summary");
-  summary.textContent = "How this was found";
+  summary.textContent = "Retrieval Mechanics";
   details.appendChild(summary);
 
   const body = document.createElement("div");
