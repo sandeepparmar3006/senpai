@@ -187,13 +187,13 @@ h1 {
   margin: auto;
   text-align: center;
   color: var(--color-muted);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-5);
 }
 
 .tategaki {
   position: absolute;
   top: 50%;
-  right: calc(var(--space-3) * -1);
+  right: var(--space-2);
   transform: translateY(-50%);
   writing-mode: vertical-rl;
   font-family: var(--font-serif);
@@ -686,6 +686,15 @@ h1 {
   }
 }
 
+@media (max-width: 768px) {
+  .tategaki {
+    display: none;
+  }
+  .empty-state {
+    padding: 0 var(--space-3);
+  }
+}
+
 @media (max-width: 480px) {
   .app {
     padding: 0 var(--space-2);
@@ -695,8 +704,5 @@ h1 {
   }
   .empty-heading {
     font-size: 21px;
-  }
-  .tategaki {
-    display: none;
   }
 }
