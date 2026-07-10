@@ -688,7 +688,8 @@ h1 {
 
 @media (max-width: 768px) {
   .tategaki {
-    display: none;
+    right: 0;
+    opacity: 0.2;
   }
   .empty-state {
     padding: 0 var(--space-3);
