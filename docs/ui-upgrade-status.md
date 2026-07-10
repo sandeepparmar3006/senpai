@@ -2,9 +2,20 @@
 
 Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time, verify in browser after each.
 
-**PAUSED as of 2026-07-09** — resuming over the weekend (2026-07-11/12). Blocks 1 & 2 shipped and deployed. Blocks 4, 3, 5, 6 not started. Start at Block 4 next.
+**ACTIVE** — Blocks 1, 2, 3, & 4 shipped and verified. Blocks 5 & 6 not started. Start at Block 5 next.
 
 ## Done
+
+### Block 3 — Streaming polish (verified)
+- Replaced 3-dot typing indicator with skeleton lines (`.skeleton-lines` containing 3 pulsing `.skeleton-line` components) matching answer shape.
+- Added smooth per-chunk token fade-in animations using `.token-chunk` spans inserted before the trailing cursor.
+- Files: `public/app.js`, `public/style.css`.
+
+### Block 4 — Suggestion chips → topical cards (verified)
+- Replaced suggestion chips with a `.suggestions-grid` containing 3 `.suggestion-card` buttons.
+- Cards categorized by route range: Lore & Opinion, Classification, and Terminology.
+- Designed with serif queries, tags, descriptions, hover transitions, and active click scaling.
+- Files: `public/index.html`, `public/style.css`, `public/app.js`.
 
 ### Block 2 — Answer cards + source cards (verified live)
 - Assistant replies: full-width bordered card (`.bubble-row.assistant .bubble`), user messages stay bubbles.
@@ -25,13 +36,6 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 Corpus too small: 250 entries (5 AniList pages, popularity-sorted) means many titles users ask about aren't in the database. Increase page count / add more sources to grow corpus size for experimentation. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged) — not up for reversal.
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
-
-### Block 4 — Suggestion chips → topical cards (NEXT)
-3 small cards instead of identical pills; each with category label matching routes (Lore / Classification / Terminology), optional genre tint or tiny thumbnail. Shows system range → converts visitor to query.
-
-### Block 3 — Streaming polish
-- Replace 3-dot typing indicator with skeleton lines matching answer shape.
-- Fade streamed tokens in per-chunk (opacity transition on appended spans) instead of raw textContent swap.
 
 ### Block 5 — Texture, restrained
 - Faint asanoha/seigaiha SVG pattern ~3% opacity behind empty state only.

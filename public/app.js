@@ -193,7 +193,7 @@ function addTypingIndicator() {
   row.id = "typing-row";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.innerHTML = '<span class="typing-indicator"><span></span><span></span><span></span></span>';
+  bubble.innerHTML = '<div class="skeleton-lines"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>';
   row.appendChild(bubble);
   messages.appendChild(row);
   if (wasNearBottom) scrollToBottom(true);
@@ -257,10 +257,17 @@ async function ask(query) {
             assistant = addBubble("assistant", "", null, meta.route);
             const cursor = document.createElement("span");
             cursor.className = "stream-cursor";
-            assistant.row.querySelector(".bubble").appendChild(cursor);
+            assistant.textEl.appendChild(cursor);
           }
-          answer += data.text;
-          assistant.textEl.textContent = answer;
+          const chunkSpan = document.createElement("span");
+          chunkSpan.className = "token-chunk";
+          chunkSpan.textContent = data.text;
+          const cursorEl = assistant.textEl.querySelector(".stream-cursor");
+          if (cursorEl) {
+            assistant.textEl.insertBefore(chunkSpan, cursorEl);
+          } else {
+            assistant.textEl.appendChild(chunkSpan);
+          }
           if (autoScroll) scrollToBottom(false);
         } else if (eventName === "error") {
           removeTypingIndicator();
@@ -292,6 +299,6 @@ form.addEventListener("submit", (e) => {
   ask(query);
 });
 
-document.querySelectorAll(".suggestion-chip").forEach((chip) => {
-  chip.addEventListener("click", () => ask(chip.textContent));
+document.querySelectorAll(".suggestion-card").forEach((card) => {
+  card.addEventListener("click", () => ask(card.dataset.query));
 });

@@ -5,6 +5,12 @@
 
 RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer streams token-by-token, is grounded in retrieved sources shown as cards with real cover art, and ships a collapsible panel showing exactly which retrieval path it took and why.
 
+### Core UX Features
+
+- **Quiet-Otaku Identity:** Restrained dark theme (`#221f26`) with Japanese serif typography (`Noto Serif JP`) and vertical text highlights.
+- **Topical Suggestion Cards:** Category-specific cards (Lore & Opinion, Classification, Terminology) matching retrieval routes to guide user questions.
+- **Polished Streaming:** Pulsing skeleton loaders matching the answer card layout and smooth chunk-by-chunk fade-in transitions.
+
 **Live demo: [senpai-seven.vercel.app](https://senpai-seven.vercel.app)**
 
 | Semantic route | Structured route |
