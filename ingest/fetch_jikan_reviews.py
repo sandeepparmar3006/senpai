@@ -10,16 +10,24 @@ JIKAN_URL = "https://api.jikan.moe/v4/anime/{mal_id}/reviews"
 REQUEST_DELAY = 1.1  # Jikan public rate limit is ~60 req/min; 1 req/sec stays safely under it
 
 
-def fetch_reviews_for(mal_id: int, max_reviews: int = 3) -> list[dict]:
-    resp = requests.get(JIKAN_URL.format(mal_id=mal_id), params={"page": 1}, timeout=30)
-    if resp.status_code == 404:
-        return []
-    resp.raise_for_status()
-    return resp.json().get("data", [])[:max_reviews]
+def fetch_reviews_for(mal_id: int, max_reviews: int = 3, retries: int = 5) -> list[dict]:
+    for attempt in range(retries):
+        resp = requests.get(JIKAN_URL.format(mal_id=mal_id), params={"page": 1}, timeout=30)
+        if resp.status_code == 404:
+            return []
+        if resp.status_code == 429 or resp.status_code >= 500:
+            if attempt == retries - 1:
+                resp.raise_for_status()
+            time.sleep(min(2**attempt, 30))
+            continue
+        resp.raise_for_status()
+        return resp.json().get("data", [])[:max_reviews]
+    return []
 
 
 def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
     out = []
+    skipped = 0
     for entry in tqdm(anilist_entries, desc="fetching reviews"):
         mal_id = entry.get("idMal")
         if not mal_id:
@@ -29,6 +37,7 @@ def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
             reviews = fetch_reviews_for(mal_id, max_reviews)
         except requests.RequestException:
             reviews = []
+            skipped += 1
         for r in reviews:
             out.append(
                 {
@@ -41,6 +50,8 @@ def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
                 }
             )
         time.sleep(REQUEST_DELAY)
+    if skipped:
+        print(f"  {skipped} entries skipped after exhausting retries")
     return out
 
 

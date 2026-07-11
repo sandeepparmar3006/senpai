@@ -28,13 +28,18 @@ query ($page: Int, $perPage: Int) {
 
 
 def fetch_page(page: int, per_page: int = 50) -> dict:
-    resp = requests.post(
-        ANILIST_URL,
-        json={"query": QUERY, "variables": {"page": page, "perPage": per_page}},
-        timeout=30,
-    )
+    for attempt in range(5):
+        resp = requests.post(
+            ANILIST_URL,
+            json={"query": QUERY, "variables": {"page": page, "perPage": per_page}},
+            timeout=30,
+        )
+        if resp.status_code == 429:
+            time.sleep(int(resp.headers.get("Retry-After", 60)))
+            continue
+        resp.raise_for_status()
+        return resp.json()["data"]["Page"]
     resp.raise_for_status()
-    return resp.json()["data"]["Page"]
 
 
 def fetch_all(pages: int, per_page: int = 50) -> list[dict]:

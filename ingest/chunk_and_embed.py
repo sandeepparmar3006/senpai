@@ -23,12 +23,15 @@ def clean_html(text: str | None) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
+DESCRIPTION_CHAR_CAP = 1200  # e5-large-instruct hard-caps at 512 tokens; longest header measured at 502 chars, so this keeps every entry under the limit
+
+
 def build_chunk_text(entry: dict) -> str:
     title = entry["title"].get("english") or entry["title"].get("romaji")
     genres = ", ".join(entry.get("genres") or [])
     tags = ", ".join(t["name"] for t in (entry.get("tags") or [])[:8])
     studios = ", ".join(s["name"] for s in (entry.get("studios", {}).get("nodes") or []))
-    description = clean_html(entry.get("description"))
+    description = clean_html(entry.get("description"))[:DESCRIPTION_CHAR_CAP]
     return (
         f"Title: {title}\n"
         f"Format: {entry.get('format')}, Episodes: {entry.get('episodes')}\n"
