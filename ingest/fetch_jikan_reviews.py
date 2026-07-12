@@ -25,9 +25,14 @@ def fetch_reviews_for(mal_id: int, max_reviews: int = 3, retries: int = 5) -> li
     return []
 
 
-def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
+CONSECUTIVE_FAILURE_ABORT = 8  # Jikan's reviews endpoint hard-blocking (not transient flakiness) looks like N straight full-retry exhaustions; no point grinding the rest of the batch once that's happening
+
+
+def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> tuple[list[dict], int, bool]:
     out = []
     skipped = 0
+    consecutive_failures = 0
+    aborted_early = False
     for entry in tqdm(anilist_entries, desc="fetching reviews"):
         mal_id = entry.get("idMal")
         if not mal_id:
@@ -35,9 +40,11 @@ def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
         title = entry["title"].get("english") or entry["title"].get("romaji")
         try:
             reviews = fetch_reviews_for(mal_id, max_reviews)
+            consecutive_failures = 0
         except requests.RequestException:
             reviews = []
             skipped += 1
+            consecutive_failures += 1
         for r in reviews:
             out.append(
                 {
@@ -49,15 +56,19 @@ def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> list[dict]:
                     "review": r.get("review", ""),
                 }
             )
+        if consecutive_failures >= CONSECUTIVE_FAILURE_ABORT:
+            print(f"  {consecutive_failures} consecutive failures — Jikan looks blocked, aborting batch early")
+            aborted_early = True
+            break
         time.sleep(REQUEST_DELAY)
     if skipped:
         print(f"  {skipped} entries skipped after exhausting retries")
-    return out
+    return out, skipped, aborted_early
 
 
 if __name__ == "__main__":
     data_dir = Path(__file__).parent.parent / "data"
     anilist = json.loads((data_dir / "raw_anilist.json").read_text())
-    reviews = fetch_all(anilist)
+    reviews, skipped, aborted_early = fetch_all(anilist)
     (data_dir / "raw_reviews.json").write_text(json.dumps(reviews, indent=2))
     print(f"Fetched {len(reviews)} reviews -> {data_dir / 'raw_reviews.json'}")
