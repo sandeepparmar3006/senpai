@@ -31,29 +31,42 @@ EPISODE_OVERRIDES = {
     235: 1120,    # Detective Conan
 }
 
+LORE_OVERRIDES = {
+    21: "Monkey D. Luffy ate the Gomu Gomu no Mi (Gum-Gum Fruit), a Paramecia-type Devil Fruit that gives him rubber powers.",
+    235: "Conan Edogawa is actually Shinichi Kudo, shrunken by the APTX 4869 drug created by the Black Organization.",
+}
+
 
 def build_chunk_text(entry: dict) -> str:
     title = entry["title"].get("english") or entry["title"].get("romaji")
     genres = ", ".join(entry.get("genres") or [])
     tags = ", ".join(t["name"] for t in (entry.get("tags") or [])[:8])
     studios = ", ".join(s["name"] for s in (entry.get("studios", {}).get("nodes") or []))
-    description = clean_html(entry.get("description"))[:DESCRIPTION_CHAR_CAP]
     
     char_nodes = entry.get("characters", {}).get("nodes") or []
     characters = ", ".join(c["name"]["full"] for c in char_nodes if c.get("name", {}).get("full"))
     
     entry_id = entry.get("id")
     episodes = EPISODE_OVERRIDES.get(entry_id, entry.get("episodes"))
+    lore = LORE_OVERRIDES.get(entry_id, "")
     
-    return (
+    header = (
         f"Title: {title}\n"
         f"Format: {entry.get('format')}, Episodes: {episodes}\n"
         f"Genres: {genres}\n"
         f"Tags: {tags}\n"
         f"Studios: {studios}\n"
-        f"Characters: {characters}\n\n"
-        f"{description}"
+        f"Characters: {characters}\n"
     )
+    if lore:
+        header += f"Lore: {lore}\n"
+    header += "\n"
+    
+    # Together AI e5-large-instruct caps at 512 tokens. Keeping total chars under ~1300 guarantees we stay under.
+    max_desc_len = max(250, 1300 - len(header))
+    description = clean_html(entry.get("description"))[:max_desc_len]
+    
+    return header + description
 
 
 def embed_text(text: str, retries: int = 6) -> list[float]:
@@ -73,7 +86,7 @@ def embed_text(text: str, retries: int = 6) -> list[float]:
             time.sleep(min(2**attempt, 20))
 
 
-def process(raw_entries: list[dict], cache: dict[str, list[float]] = None) -> list[dict]:
+def process(raw_entries: list[dict], cache: dict = None) -> list[dict]:
     if cache is None:
         cache = {}
     chunks = []
@@ -82,8 +95,13 @@ def process(raw_entries: list[dict], cache: dict[str, list[float]] = None) -> li
         if not text.strip():
             continue
         source_id = str(entry["id"])
-        if source_id in cache:
-            embedding = cache[source_id]
+        
+        cached_item = cache.get(source_id)
+        if cached_item and isinstance(cached_item, dict) and cached_item.get("chunk_text") == text:
+            embedding = cached_item["embedding"]
+        elif cached_item and not isinstance(cached_item, dict):
+            # Fallback for simple ID -> embedding dict
+            embedding = cached_item
         else:
             embedding = embed_text(text)
             time.sleep(0.1)
@@ -114,7 +132,7 @@ if __name__ == "__main__":
     if cache_path.exists():
         try:
             cached_data = json.loads(cache_path.read_text())
-            cache = {item["source_id"]: item["embedding"] for item in cached_data}
+            cache = {item["source_id"]: {"chunk_text": item.get("chunk_text"), "embedding": item["embedding"]} for item in cached_data}
             print(f"Loaded {len(cache)} cached embeddings.")
         except Exception as e:
             print(f"Failed to load cache: {e}")

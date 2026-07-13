@@ -26,7 +26,7 @@ if __name__ == "__main__":
     if cache_path.exists():
         try:
             cached_data = json.loads(cache_path.read_text())
-            cache = {item["source_id"]: item["embedding"] for item in cached_data}
+            cache = {item["source_id"]: {"chunk_text": item.get("chunk_text"), "embedding": item["embedding"]} for item in cached_data}
             print(f"  Loaded {len(cache)} cached embeddings")
         except Exception as e:
             print(f"  Failed to load cache: {e}")
