@@ -24,7 +24,7 @@ def save_progress(index: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch-size", type=int, default=200)
+    parser.add_argument("--batch-size", type=int, default=60)
     parser.add_argument("--restart", action="store_true", help="ignore saved progress, start from entry 0")
     args = parser.parse_args()
 

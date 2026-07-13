@@ -46,6 +46,7 @@ We verified the production routing and answers using the local virtualenv python
 * Rate limits are backed by the Postgres table `rate_limits` via the PL/pgSQL function `check_rate_limit(bucket_key, max_count, window_seconds)`.
 * Current limits: 15 requests/min per IP, 1000 requests/day globally.
 * The API handler falls open in case of database limiter errors to avoid breaking availability.
+* **Jikan (MAL Reviews) API rate limits**: Enforces a strict limit of 3 requests/sec and 60 requests/min. The batch size in `run_ingest_reviews.py` has been adjusted to `60` to respect this limit, but IP-level throttling on public requests remains a bottleneck, causing review ingestion to halt at 250 items when throttling is active.
 
 ---
 
