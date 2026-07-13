@@ -38,7 +38,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | Pre-router (semantic-only baseline) | — | 100% | 100% |
 | Router added | 82% | 77% | 77% |
 | After router fix (`45c27b5`) | 100% | 100% | 100% |
-| Expanded Database (1000 entries) + HNSW | 100% | 86% | 86% |
+| Expanded Database (1000 entries) + HNSW | 100% | 86% | 91% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -46,6 +46,12 @@ Adding the router improved real correctness (structured questions get accurate w
 2. `filter_lookup` sometimes extracted wrong or empty arguments ("which anime are movies" didn't pass `format: "MOVIE"`).
 
 Both traced to the same root cause: tool descriptions didn't state the disambiguation rule (named-title plot question wins even when phrased as "what X") and the `format` param had no enum. Fixed both, re-ran the eval unchanged: 100/100/100. That re-run is a regression check validating those two fixes — the next step is a larger held-out set the fixes weren't tuned against, to test generalization.
+
+### Ongoing Series Episode Overrides
+
+AniList API sets `episodes: null` for ongoing series (e.g. `ONE PIECE` and `Detective Conan`). Because the database filters entries using `(metadata->>'episodes')::int >= min_episodes`, these popular ongoing shows were previously filtered out when users searched for long-running anime (e.g., "anime with more than 100 episodes").
+
+To solve this, we introduced `EPISODE_OVERRIDES` in `ingest/chunk_and_embed.py` to map these known ongoing series to their actual episode counts (e.g., 1100 for One Piece, 1120 for Detective Conan). The local json data and Supabase table were rebuilt to ensure they are returned correctly in structured queries. This fix boosted the overall answer keyword match rate from 86% to 91%.
 
 Two smaller findings from repeat runs, kept because they're what eval work actually looks like:
 

@@ -26,15 +26,25 @@ def clean_html(text: str | None) -> str:
 DESCRIPTION_CHAR_CAP = 1200  # e5-large-instruct hard-caps at 512 tokens; longest header measured at 502 chars, so this keeps every entry under the limit
 
 
+EPISODE_OVERRIDES = {
+    21: 1100,     # ONE PIECE
+    235: 1120,    # Detective Conan
+}
+
+
 def build_chunk_text(entry: dict) -> str:
     title = entry["title"].get("english") or entry["title"].get("romaji")
     genres = ", ".join(entry.get("genres") or [])
     tags = ", ".join(t["name"] for t in (entry.get("tags") or [])[:8])
     studios = ", ".join(s["name"] for s in (entry.get("studios", {}).get("nodes") or []))
     description = clean_html(entry.get("description"))[:DESCRIPTION_CHAR_CAP]
+    
+    entry_id = entry.get("id")
+    episodes = EPISODE_OVERRIDES.get(entry_id, entry.get("episodes"))
+    
     return (
         f"Title: {title}\n"
-        f"Format: {entry.get('format')}, Episodes: {entry.get('episodes')}\n"
+        f"Format: {entry.get('format')}, Episodes: {episodes}\n"
         f"Genres: {genres}\n"
         f"Tags: {tags}\n"
         f"Studios: {studios}\n\n"
@@ -84,7 +94,7 @@ def process(raw_entries: list[dict], cache: dict[str, list[float]] = None) -> li
                 "metadata": {
                     "genres": entry.get("genres"),
                     "format": entry.get("format"),
-                    "episodes": entry.get("episodes"),
+                    "episodes": EPISODE_OVERRIDES.get(entry.get("id"), entry.get("episodes")),
                 },
             }
         )
