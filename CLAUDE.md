@@ -43,6 +43,9 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
   * Enforced in the database layer via atomic updates (`check_rate_limit` RPC).
   * Limits are set to 15 queries/minute per IP, and 1000 queries/day globally.
   * Node.js fails open on database limiter exceptions to preserve service uptime.
+  * **Jikan API Rate Limit (MAL reviews ingestion)**: Jikan public API has a rate limit of ~60 requests/minute (3 requests/second). The fetch delay is set to 1.1s (`REQUEST_DELAY` in `fetch_jikan_reviews.py`) to stay safely under it and avoid 429s.
+* **Corpus Expansion Guidelines**:
+  * To increase SenpAI's domain knowledge, continue expanding the anime corpus. Ingest more pages of popular anime (e.g. increase page count using `python ingest/run_ingest.py --pages 20` or higher to cover more anime series) and fetch corresponding MAL reviews using `python ingest/run_ingest_reviews.py`.
 * **Vector Embeddings**:
   * Generated using `intfloat/multilingual-e5-large-instruct` (1024-dim).
   * Similarity searches use the `<=>` operator (cosine distance converted to similarity via `1 - distance`).
