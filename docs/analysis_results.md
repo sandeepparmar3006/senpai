@@ -16,7 +16,7 @@ This document outlines the architecture, database configurations, evaluation res
 * **Source Filtering**: Enforces `isAdult: false` at ingestion time to guarantee SFW content.
 * **Rate Limits Compliance**: Utilizes a `0.7s` delay between paginated requests to respect AniList API rate limits.
 * **Vector Models**: Employs `intfloat/multilingual-e5-large-instruct` (1024 dimensions) for embedding text summaries.
-* **Database Size**: Ingested 10 pages from AniList, yielding 500 anime metadata chunks (plus 747 review chunks).
+* **Database Size**: Ingested 20 pages from AniList, yielding 1000 anime metadata chunks (plus 747 review chunks).
 
 ---
 
@@ -30,11 +30,11 @@ The database schema consists of:
 ---
 
 ## 4. Evaluation Performance Metrics
-We verified the production routing and answers using the local virtualenv python interpreter on the expanded 500-entry database:
+We verified the production routing and answers using the local virtualenv python interpreter on the expanded 1000-entry database:
 * **Regression Dataset (`qa_pairs.json`)**:
   * Route match rate: 100% (22/22)
   * Retrieval hit rate: 86% (19/22)
-  * Answer keyword match rate: 95% (21/22)
+  * Answer keyword match rate: 86% (19/22)
 * **Holdout Dataset (`qa_pairs_holdout.json`)** (historical baseline on 250-entry corpus):
   * Route match rate: 100% (45/45)
   * Retrieval hit rate: 100% (45/45)

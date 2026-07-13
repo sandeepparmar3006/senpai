@@ -21,8 +21,18 @@ if __name__ == "__main__":
     print(f"  {len(raw_entries)} entries fetched")
 
     print("Embedding chunks via Together AI...")
-    chunks = process(raw_entries)
-    (data_dir / "embedded.json").write_text(json.dumps(chunks, indent=2))
+    cache_path = data_dir / "embedded.json"
+    cache = {}
+    if cache_path.exists():
+        try:
+            cached_data = json.loads(cache_path.read_text())
+            cache = {item["source_id"]: item["embedding"] for item in cached_data}
+            print(f"  Loaded {len(cache)} cached embeddings")
+        except Exception as e:
+            print(f"  Failed to load cache: {e}")
+
+    chunks = process(raw_entries, cache)
+    cache_path.write_text(json.dumps(chunks, indent=2))
     print(f"  {len(chunks)} chunks embedded")
 
     print("Loading into Supabase...")

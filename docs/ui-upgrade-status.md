@@ -42,8 +42,8 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 ## New item added 2026-07-09
 
 ### Corpus expansion (SHIPPED)
-Corpus expanded to 500 entries (10 AniList pages, popularity-sorted) to resolve the issue where many titles users ask about weren't in the database. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged).
-*Update 2026-07-13: Ingested 10 pages, increasing database size. Switched pgvector index to HNSW to maintain high retrieval rates (86% retrieval, 95% keyword match on eval suite after expansion).*
+Corpus expanded to 1000 entries (20 AniList pages, popularity-sorted) to resolve the issue where many titles users ask about weren't in the database. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged).
+*Update 2026-07-13: Ingested 20 pages, increasing database size. Switched pgvector index to HNSW to maintain high retrieval rates (86% retrieval, 86% keyword match on eval suite after 1000-entry expansion).*
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
 

@@ -38,7 +38,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | Pre-router (semantic-only baseline) | — | 100% | 100% |
 | Router added | 82% | 77% | 77% |
 | After router fix (`45c27b5`) | 100% | 100% | 100% |
-| Expanded Database (500 entries) + HNSW | 100% | 86% | 95% |
+| Expanded Database (1000 entries) + HNSW | 100% | 86% | 86% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -99,7 +99,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 2. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
-5. `python ingest/run_ingest.py --pages 10` (10 pages x 50 = 500 anime entries)
+5. `python ingest/run_ingest.py --pages 20` (20 pages x 50 = 1000 anime entries)
 6. `python ingest/run_ingest_reviews.py` — fetches MAL reviews via Jikan for entries with an `idMal`, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
 7. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
 8. `npm install && vercel dev` locally, `vercel --prod` to deploy.
@@ -110,7 +110,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
 - ~~Jikan/MyAnimeList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
 - ~~UI Polish (Blocks 1-5)~~ — done: Added streaming token animations, skeleton loaders, suggestion cards, and an immersive empty state with a subtle "quiet otaku" aesthetic.
-- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 500 anime entries and upgraded pgvector index to HNSW for 86% search recall and 95% answer accuracy.
+- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 1000 anime entries and upgraded pgvector index to HNSW for 86% search recall and 86% answer accuracy.
 
 ## License
 

@@ -59,17 +59,25 @@ def embed_text(text: str, retries: int = 6) -> list[float]:
             time.sleep(min(2**attempt, 20))
 
 
-def process(raw_entries: list[dict]) -> list[dict]:
+def process(raw_entries: list[dict], cache: dict[str, list[float]] = None) -> list[dict]:
+    if cache is None:
+        cache = {}
     chunks = []
     for entry in tqdm(raw_entries, desc="embedding"):
         text = build_chunk_text(entry)
         if not text.strip():
             continue
-        embedding = embed_text(text)
+        source_id = str(entry["id"])
+        if source_id in cache:
+            embedding = cache[source_id]
+        else:
+            embedding = embed_text(text)
+            time.sleep(0.1)
+            
         title = entry["title"].get("english") or entry["title"].get("romaji")
         chunks.append(
             {
-                "source_id": str(entry["id"]),
+                "source_id": source_id,
                 "title": title,
                 "chunk_text": text,
                 "embedding": embedding,
@@ -80,13 +88,23 @@ def process(raw_entries: list[dict]) -> list[dict]:
                 },
             }
         )
-        time.sleep(0.1)
     return chunks
 
 
 if __name__ == "__main__":
     data_dir = Path(__file__).parent.parent / "data"
     raw = json.loads((data_dir / "raw_anilist.json").read_text())
-    embedded = process(raw)
-    (data_dir / "embedded.json").write_text(json.dumps(embedded, indent=2))
-    print(f"Embedded {len(embedded)} chunks -> {data_dir / 'embedded.json'}")
+    
+    cache_path = data_dir / "embedded.json"
+    cache = {}
+    if cache_path.exists():
+        try:
+            cached_data = json.loads(cache_path.read_text())
+            cache = {item["source_id"]: item["embedding"] for item in cached_data}
+            print(f"Loaded {len(cache)} cached embeddings.")
+        except Exception as e:
+            print(f"Failed to load cache: {e}")
+            
+    embedded = process(raw, cache)
+    cache_path.write_text(json.dumps(embedded, indent=2))
+    print(f"Embedded {len(embedded)} chunks -> {cache_path}")
