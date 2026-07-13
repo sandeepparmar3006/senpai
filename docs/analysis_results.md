@@ -16,25 +16,26 @@ This document outlines the architecture, database configurations, evaluation res
 * **Source Filtering**: Enforces `isAdult: false` at ingestion time to guarantee SFW content.
 * **Rate Limits Compliance**: Utilizes a `0.7s` delay between paginated requests to respect AniList API rate limits.
 * **Vector Models**: Employs `intfloat/multilingual-e5-large-instruct` (1024 dimensions) for embedding text summaries.
+* **Database Size**: Ingested 10 pages from AniList, yielding 500 anime metadata chunks (plus 747 review chunks).
 
 ---
 
 ## 3. Database Schema & RPC Functions
 The database schema consists of:
 * `media_chunks` table containing columns `(id, source, source_id, title, chunk_text, embedding, metadata, created_at)`.
-* An `ivfflat` index (`media_chunks_embedding_idx`) on the `embedding` column using `vector_cosine_ops`.
+* An `hnsw` index (`media_chunks_embedding_hnsw_idx`) on the `embedding` column using `vector_cosine_ops`.
 * `match_media_chunks` SQL RPC function returning rows matching cosine similarity for semantic queries.
 * `filter_media` SQL RPC function matching genre, format, or episode filters across the full corpus.
 
 ---
 
 ## 4. Evaluation Performance Metrics
-We verified the production routing and answers using the local virtualenv python interpreter:
+We verified the production routing and answers using the local virtualenv python interpreter on the expanded 500-entry database:
 * **Regression Dataset (`qa_pairs.json`)**:
   * Route match rate: 100% (22/22)
-  * Retrieval hit rate: 100% (22/22)
-  * Answer keyword match rate: 100% (22/22)
-* **Holdout Dataset (`qa_pairs_holdout.json`)**:
+  * Retrieval hit rate: 86% (19/22)
+  * Answer keyword match rate: 95% (21/22)
+* **Holdout Dataset (`qa_pairs_holdout.json`)** (historical baseline on 250-entry corpus):
   * Route match rate: 100% (45/45)
   * Retrieval hit rate: 100% (45/45)
   * Answer keyword match rate: 98% (44/45) (The single mismatch is a strict keyword validation artifact on Saitama's unfulfillment, where the model generated "single punch" instead of the expected "one punch").
@@ -55,9 +56,9 @@ We verified the production routing and answers using the local virtualenv python
 * **Impact**: If a developer executes `filter_media.sql` on the database, it will break the backend `api/chat.js` since the mapping logic expects `r.source_id` to link references.
 * **Resolution**: Standardize `supabase/filter_media.sql` to match `schema.sql`'s return type signature.
 
-### B. Vector Indexing Upgrade
-* **Observation**: The schema utilizes an `ivfflat` index for similarity searches.
-* **Recommendation**: Switch to an `hnsw` index (`vector_cosine_ops`) for higher search recall accuracy and speed as the corpus grows.
+### B. Vector Indexing Upgrade (COMPLETED)
+* **Observation**: The schema has been updated to use an `hnsw` index (`media_chunks_embedding_hnsw_idx` on `vector_cosine_ops`).
+* **Result**: Upgrading from `ivfflat` restored retrieval hit rate from 73% back to 86% and answer accuracy to 95% after corpus expansion to 500 entries.
 
 ### C. Answer Evaluation Scoring
 * **Observation**: The evaluation keyword match checks for exact substrings.

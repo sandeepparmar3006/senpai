@@ -14,8 +14,8 @@ create table media_chunks (
   unique (source, source_id)
 );
 
-create index if not exists media_chunks_embedding_idx
-  on media_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+create index if not exists media_chunks_embedding_hnsw_idx
+  on media_chunks using hnsw (embedding vector_cosine_ops);
 
 create or replace function match_media_chunks(
   query_embedding vector(1024),

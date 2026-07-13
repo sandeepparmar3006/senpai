@@ -41,9 +41,9 @@ Plan from 2026-07-08 session. Six ranked upgrades; implement one block at a time
 
 ## New item added 2026-07-09
 
-### Corpus expansion (DEFERRED)
-Corpus too small: 250 entries (5 AniList pages, popularity-sorted) means many titles users ask about aren't in the database. Increase page count / add more sources to grow corpus size for experimentation. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged) — not up for reversal.
-*Update 2026-07-10: Deferred to avoid incurring additional Together AI embedding API costs for now.*
+### Corpus expansion (SHIPPED)
+Corpus expanded to 500 entries (10 AniList pages, popularity-sorted) to resolve the issue where many titles users ask about weren't in the database. SFW-only stays as-is (`isAdult: false` filter, README/positioning unchanged).
+*Update 2026-07-13: Ingested 10 pages, increasing database size. Switched pgvector index to HNSW to maintain high retrieval rates (86% retrieval, 95% keyword match on eval suite after expansion).*
 
 ## To Do (original ranked order: 2 → 1 → 4 → 3 → 5 → 6)
 
