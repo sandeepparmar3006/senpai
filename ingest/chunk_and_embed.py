@@ -39,6 +39,9 @@ def build_chunk_text(entry: dict) -> str:
     studios = ", ".join(s["name"] for s in (entry.get("studios", {}).get("nodes") or []))
     description = clean_html(entry.get("description"))[:DESCRIPTION_CHAR_CAP]
     
+    char_nodes = entry.get("characters", {}).get("nodes") or []
+    characters = ", ".join(c["name"]["full"] for c in char_nodes if c.get("name", {}).get("full"))
+    
     entry_id = entry.get("id")
     episodes = EPISODE_OVERRIDES.get(entry_id, entry.get("episodes"))
     
@@ -47,7 +50,8 @@ def build_chunk_text(entry: dict) -> str:
         f"Format: {entry.get('format')}, Episodes: {episodes}\n"
         f"Genres: {genres}\n"
         f"Tags: {tags}\n"
-        f"Studios: {studios}\n\n"
+        f"Studios: {studios}\n"
+        f"Characters: {characters}\n\n"
         f"{description}"
     )
 

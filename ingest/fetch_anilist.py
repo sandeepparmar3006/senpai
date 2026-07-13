@@ -21,6 +21,13 @@ query ($page: Int, $perPage: Int) {
       format
       episodes
       studios { nodes { name } }
+      characters(sort: ROLE, page: 1, perPage: 15) {
+        nodes {
+          name {
+            full
+          }
+        }
+      }
     }
   }
 }
