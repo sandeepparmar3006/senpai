@@ -58,9 +58,10 @@ To solve this, we introduced `EPISODE_OVERRIDES` in `ingest/chunk_and_embed.py` 
 Traditional anime synopses are generic and often omit key character names (such as "Boa Hancock" or "Franky") and key plot/lore facts (like Luffy eating the Gum-Gum Fruit). Consequently, character-specific semantic queries failed to match the correct anime chunk.
 
 To resolve this:
-1. **Character Lists**: Updated `ingest/fetch_anilist.py` to query the top 40 characters for every media entry. These are appended to the embedding chunk text under a `Characters: <list of names>` line.
-2. **Lore Overrides**: Created a `LORE_OVERRIDES` dictionary in `ingest/chunk_and_embed.py` to inject key facts (e.g. Luffy's Devil Fruit) directly into the chunk text for popular series.
-3. **Smart Caching Optimization**: Re-designed the caching mechanism in `ingest/chunk_and_embed.py` and `ingest/run_ingest.py` to verify if the chunk text changed before calling the Together AI embedding API. This allows instant cache reuse for unchanged entries and dynamic re-embedding only for entries whose characters or lore details changed (re-embedding the entire 1,000-entry database in under 10 seconds).
+1. **Extended Lore Extraction**: Updated `ingest/fetch_anilist.py` to fetch deep lore including full character descriptions, character roles (MAIN/SUPPORTING), staff members (directors/creators), synonyms, and release seasons.
+2. **Multi-Chunk Semantic Architecture**: To accommodate the massive influx of text while strictly adhering to the embedding model's 512-token limit, we refactored `ingest/chunk_and_embed.py` to break a single anime down into **multiple semantic chunks** (e.g., a main metadata chunk, a cast/staff chunk, and numerous character lore chunks).
+3. **Database Constraint Evasion & Deduplication**: To store multiple chunks for the same anime without modifying the live database's unique `(source, source_id)` constraint, secondary chunks use composite IDs (e.g. `21_cast`). `api/chat.js` dynamically remaps these back to the base numeric ID using JSON metadata, ensuring thumbnails load seamlessly and `filter_lookup` results are deduplicated.
+4. **Smart Caching Optimization**: Re-designed the caching mechanism in `ingest/chunk_and_embed.py` and `ingest/run_ingest.py` to verify if the chunk text changed before calling the Together AI embedding API. This allows instant cache reuse for unchanged entries and dynamic re-embedding only for entries whose characters or lore details changed.
 
 Two smaller findings from repeat runs, kept because they're what eval work actually looks like:
 
