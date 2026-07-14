@@ -15,16 +15,26 @@ query ($page: Int, $perPage: Int) {
       id
       idMal
       title { romaji english }
+      synonyms
+      season
+      seasonYear
       description(asHtml: false)
       genres
       tags { name }
       format
       episodes
       studios { nodes { name } }
-      characters(sort: ROLE, page: 1, perPage: 40) {
+      staff(sort: RELEVANCE, perPage: 10) {
         nodes {
-          name {
-            full
+          name { full }
+        }
+      }
+      characters(sort: ROLE, page: 1, perPage: 40) {
+        edges {
+          role
+          node {
+            name { full }
+            description(asHtml: false)
           }
         }
       }

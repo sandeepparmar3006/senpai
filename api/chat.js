@@ -148,7 +148,17 @@ async function filterLookup(args) {
     format_filter: args.format ?? null,
   });
   if (error) throw error;
-  return data;
+  
+  const seen = new Set();
+  const deduped = [];
+  for (const r of data) {
+    const id = r.metadata?.anilist_id ?? r.source_id;
+    if (!seen.has(id)) {
+      seen.add(id);
+      deduped.push(r);
+    }
+  }
+  return deduped;
 }
 
 function buildContext(routeName, results) {
@@ -275,14 +285,14 @@ export default async function handler(req, res) {
 
   const sources = results.map((r) => {
     if (routeName === "filter_lookup") {
-      return { title: r.title, source_id: r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null };
+      return { title: r.title, source_id: r.metadata?.anilist_id ?? r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null };
     }
     if (routeName === "opinion_search") {
       // source_id is a review id (mal-review composite); anilist_id in metadata is what the
       // client needs to fetch cover art, so it's surfaced as source_id here instead.
       return { title: r.title, source_id: r.metadata?.anilist_id ?? null, similarity: r.similarity, score: r.metadata?.score ?? null };
     }
-    return { title: r.title, source_id: r.source_id, similarity: r.similarity };
+    return { title: r.title, source_id: r.metadata?.anilist_id ?? r.source_id, similarity: r.similarity };
   });
   res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources })}\n\n`);
 
