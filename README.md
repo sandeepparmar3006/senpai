@@ -63,6 +63,15 @@ To resolve this:
 3. **Database Constraint Evasion & Deduplication**: To store multiple chunks for the same anime without modifying the live database's unique `(source, source_id)` constraint, secondary chunks use composite IDs (e.g. `21_cast`). `api/chat.js` dynamically remaps these back to the base numeric ID using JSON metadata, ensuring thumbnails load seamlessly and `filter_lookup` results are deduplicated.
 4. **Smart Caching Optimization**: Re-designed the caching mechanism in `ingest/chunk_and_embed.py` and `ingest/run_ingest.py` to verify if the chunk text changed before calling the Together AI embedding API. This allows instant cache reuse for unchanged entries and dynamic re-embedding only for entries whose characters or lore details changed.
 
+### Review Ingestion Resilience
+
+Initially, the pipeline fetched fan reviews from MyAnimeList via the unofficial Jikan API. However, Jikan enforces strict IP-level rate blocks that routinely halted ingestion after ~250 items.
+
+To resolve this limitation:
+1. **Direct AniList GraphQL**: We migrated `ingest/fetch_anilist_reviews.py` to fetch reviews directly from AniList's official GraphQL API, completely bypassing Jikan.
+2. **Generous Rate Limits**: AniList permits ~90 requests/minute. By batching 50 anime IDs per GraphQL query, the script now fetches thousands of reviews in seconds without being blocked.
+3. **Limitation**: To keep chunk size and embedding costs manageable, the pipeline currently extracts only the top 3 most helpful reviews per anime. 
+
 Two smaller findings from repeat runs, kept because they're what eval work actually looks like:
 
 - **Routing is sampled**, so route match occasionally drops a question run-to-run (21/22 observed on one re-run). Single-run numbers on N=22 carry real variance.
