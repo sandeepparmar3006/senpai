@@ -84,9 +84,9 @@ The three remaining misses are reported, not patched: one correct answer rejecte
 ## Architecture
 
 ```
-AniList GraphQL (isAdult: false filtered at fetch time)        Jikan/MAL reviews API
+AniList GraphQL (isAdult: false filtered at fetch time)        AniList GraphQL (Reviews API)
         |                                                              |
-   ingest/fetch_anilist.py       -> data/raw_anilist.json    ingest/fetch_jikan_reviews.py -> data/raw_reviews.json
+   ingest/fetch_anilist.py       -> data/raw_anilist.json    ingest/fetch_anilist_reviews.py -> data/raw_reviews.json
         |                                                              |
    ingest/chunk_and_embed.py     -> data/embedded.json    ingest/chunk_and_embed_reviews.py -> data/embedded_reviews.json
         | (Together AI embeddings, intfloat/multilingual-e5-large-instruct, 1024-dim, both sources)
@@ -116,7 +116,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
 5. `python ingest/run_ingest.py --pages 20` (20 pages x 50 = 1000 anime entries)
-6. `python ingest/run_ingest_reviews.py` — fetches MAL reviews via Jikan for entries with an `idMal`, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
+6. `python ingest/run_ingest_reviews.py` — fetches reviews directly via AniList, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
 7. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
 8. `npm install && vercel dev` locally, `vercel --prod` to deploy.
 
@@ -124,7 +124,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 
 - ~~Held-out eval set~~ — done, see "Held-out eval" above.
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
-- ~~Jikan/MyAnimeList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
+- ~~AniList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
 - ~~UI Polish (Blocks 1-5)~~ — done: Added streaming token animations, skeleton loaders, suggestion cards, and an immersive empty state with a subtle "quiet otaku" aesthetic.
 - ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 1000 anime entries and upgraded pgvector index to HNSW for 86% search recall and 86% answer accuracy.
 

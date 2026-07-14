@@ -25,7 +25,7 @@ SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a f
 2. `filter_lookup`: Structured SQL metadata filtering query for whole-corpus filters (genre, format, episode counts).
 3. `opinion_search`: Cosine similarity search over MAL/Jikan fan reviews for opinion/reception/recommendation questions. Searches `media_chunks` where `source = 'jikan_review'` via the same `match_media_chunks` RPC with `source_filter` set.
 
-Second text source (reviews) is ingested separately from the AniList pipeline: `ingest/fetch_jikan_reviews.py` -> `ingest/chunk_and_embed_reviews.py` -> `ingest/load_to_supabase.py` (via `ingest/run_ingest_reviews.py`), requires `idMal` on the AniList entry (added to the GraphQL query in `fetch_anilist.py`) to map to a MAL id for Jikan lookup.
+Second text source (reviews) is ingested separately from the AniList pipeline: `ingest/fetch_anilist_reviews.py` -> `ingest/chunk_and_embed_reviews.py` -> `ingest/load_to_supabase.py` (via `ingest/run_ingest_reviews.py`), querying reviews from AniList's GraphQL API.
 
 * **Backend**: Vercel Node.js Serverless function at [api/chat.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/chat.js).
 * **Frontend**: Single page pure HTML/JS/CSS app served out of [public/](file:///Users/sandeepparmar/.claude/projects/senpai/public/).
@@ -43,9 +43,9 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
   * Enforced in the database layer via atomic updates (`check_rate_limit` RPC).
   * Limits are set to 15 queries/minute per IP, and 1000 queries/day globally.
   * Node.js fails open on database limiter exceptions to preserve service uptime.
-  * **Jikan API Rate Limit (MAL reviews ingestion)**: Jikan public API has a rate limit of ~60 requests/minute (3 requests/second). The fetch delay is set to 1.1s (`REQUEST_DELAY` in `fetch_jikan_reviews.py`) to stay safely under it and avoid 429s.
+  * **AniList API Rate Limit (reviews ingestion)**: AniList public API has a rate limit of ~90 requests/minute. The fetch script uses batching and a 0.7s fetch delay (`REQUEST_DELAY` in `fetch_anilist_reviews.py`) to avoid 429s.
 * **Corpus Expansion Guidelines**:
-  * To increase SenpAI's domain knowledge, continue expanding the anime corpus. Ingest more pages of popular anime (e.g. increase page count using `python ingest/run_ingest.py --pages 20` or higher to cover more anime series) and fetch corresponding MAL reviews using `python ingest/run_ingest_reviews.py`.
+  * To increase SenpAI's domain knowledge, continue expanding the anime corpus. Ingest more pages of popular anime (e.g. increase page count using `python ingest/run_ingest.py --pages 20` or higher to cover more anime series) and fetch corresponding AniList reviews using `python ingest/run_ingest_reviews.py`.
 * **Vector Embeddings**:
   * Generated using `intfloat/multilingual-e5-large-instruct` (1024-dim).
   * Similarity searches use the `<=>` operator (cosine distance converted to similarity via `1 - distance`).

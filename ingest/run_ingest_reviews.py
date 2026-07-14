@@ -1,9 +1,9 @@
-"""Fetch MAL reviews for already-ingested anime and load them as a second source (opinion_search), in resumable batches."""
+"""Fetch AniList reviews for already-ingested anime and load them as a second source (opinion_search), in resumable batches."""
 import argparse
 import json
 from pathlib import Path
 
-from fetch_jikan_reviews import fetch_all
+from fetch_anilist_reviews import fetch_all
 from chunk_and_embed_reviews import process
 from load_to_supabase import load
 
@@ -24,7 +24,7 @@ def save_progress(index: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch-size", type=int, default=60)
+    parser.add_argument("--batch-size", type=int, default=200)
     parser.add_argument("--restart", action="store_true", help="ignore saved progress, start from entry 0")
     args = parser.parse_args()
 
@@ -52,11 +52,10 @@ if __name__ == "__main__":
         print(f"  {count} rows loaded")
 
         # a batch that got cut short (aborted_early) or mostly failed looks like
-        # Jikan being blocked, not transient flakiness — don't mark it "done" or a
-        # future resume would silently skip retrying it
+        # the API being blocked, not transient flakiness — don't mark it "done"
         if aborted_early or skipped / len(batch) > 0.4:
-            print(f"  batch skip rate too high ({skipped}/{len(batch)}) — Jikan looks blocked, stopping without advancing checkpoint")
-            print(f"  resume later with the same command once Jikan recovers; it will retry from index {i}")
+            print(f"  batch skip rate too high ({skipped}/{len(batch)}) — API looks blocked, stopping without advancing checkpoint")
+            print(f"  resume later with the same command once it recovers; it will retry from index {i}")
             break
 
         save_progress(i + len(batch))

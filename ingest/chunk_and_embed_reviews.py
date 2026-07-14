@@ -1,4 +1,4 @@
-"""Turn raw Jikan reviews into embedded chunks via Together AI (opinion-search source)."""
+"""Turn raw AniList reviews into embedded chunks via Together AI (opinion-search source)."""
 import json
 from pathlib import Path
 
