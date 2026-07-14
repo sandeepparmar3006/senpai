@@ -77,6 +77,13 @@ Two smaller findings from repeat runs, kept because they're what eval work actua
 - **Routing is sampled**, so route match occasionally drops a question run-to-run (21/22 observed on one re-run). Single-run numbers on N=22 carry real variance.
 - **One "failure" was a scoring bug, not a model bug**: the model emitted a U+202F narrow no-break space inside "Pirate King", which broke exact substring matching. `keyword_hit()` now normalizes unicode whitespace, with a regression test in `tests/test_eval.py`.
 
+### Universal Corpus (Manga & Deep Lore)
+
+To make the knowledge base truly comprehensive, we expanded the ingestion pipeline to support cross-media data and deeper lore:
+1. **Manga Support**: The ingestion engine (`fetch_anilist.py`) now dynamically loops over both `ANIME` and `MANGA` GraphQL queries, and handles manga-specific properties (like `chapters` instead of `episodes`) cleanly.
+2. **Franchise Relations (Watch Orders)**: We pull `relations` edges (Sequels, Prequels, Side Stories) from AniList and embed them. To strictly prevent this dynamically sized list from breaking the 512-token limit, relations are truncated to 300 characters before embedding.
+3. **Deep Reviews**: With the robust AniList GraphQL pipeline, we doubled the fan review extraction limit from 3 to 6 per item, dramatically enhancing the depth of opinion-based RAG questions.
+
 ### Held-out eval (45 unseen questions)
 
 `eval/qa_pairs_holdout.json`: 45 new questions (28 semantic with fresh phrasing, 17 structured with ground truth computed from the raw corpus) written after the router fix and never used to tune it. `python eval/eval.py eval/qa_pairs_holdout.json`:
@@ -135,7 +142,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
 - ~~AniList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
 - ~~UI Polish (Blocks 1-5)~~ — done: Added streaming token animations, skeleton loaders, suggestion cards, and an immersive empty state with a subtle "quiet otaku" aesthetic.
-- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 1000 anime entries and upgraded pgvector index to HNSW for 86% search recall and 86% answer accuracy.
+- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 1000 anime entries (plus manga variants) and upgraded pgvector index to HNSW for fast search recall.
 
 ## License
 

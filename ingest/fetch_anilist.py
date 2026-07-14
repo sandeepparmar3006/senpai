@@ -8,10 +8,10 @@ import requests
 ANILIST_URL = "https://graphql.anilist.co"
 
 QUERY = """
-query ($page: Int, $perPage: Int) {
+query ($page: Int, $perPage: Int, $type: MediaType) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage }
-    media(type: ANIME, isAdult: false, sort: POPULARITY_DESC) {
+    media(type: $type, isAdult: false, sort: POPULARITY_DESC) {
       id
       idMal
       title { romaji english }
@@ -23,7 +23,18 @@ query ($page: Int, $perPage: Int) {
       tags { name }
       format
       episodes
+      chapters
+      type
       studios { nodes { name } }
+      relations {
+        edges {
+          relationType
+          node {
+            title { romaji }
+            type
+          }
+        }
+      }
       staff(sort: RELEVANCE, perPage: 10) {
         nodes {
           name { full }
@@ -44,11 +55,11 @@ query ($page: Int, $perPage: Int) {
 """
 
 
-def fetch_page(page: int, per_page: int = 50) -> dict:
+def fetch_page(page: int, media_type: str, per_page: int = 50) -> dict:
     for attempt in range(5):
         resp = requests.post(
             ANILIST_URL,
-            json={"query": QUERY, "variables": {"page": page, "perPage": per_page}},
+            json={"query": QUERY, "variables": {"page": page, "perPage": per_page, "type": media_type}},
             timeout=30,
         )
         if resp.status_code == 429:
@@ -59,10 +70,10 @@ def fetch_page(page: int, per_page: int = 50) -> dict:
     resp.raise_for_status()
 
 
-def fetch_all(pages: int, per_page: int = 50) -> list[dict]:
+def fetch_all(pages: int, media_type: str, per_page: int = 50) -> list[dict]:
     entries = []
     for page in range(1, pages + 1):
-        data = fetch_page(page, per_page)
+        data = fetch_page(page, media_type, per_page)
         entries.extend(data["media"])
         if not data["pageInfo"]["hasNextPage"]:
             break
@@ -77,8 +88,14 @@ if __name__ == "__main__":
     parser.add_argument("--pages", type=int, default=5)
     args = parser.parse_args()
 
-    entries = fetch_all(args.pages)
+    print("Fetching ANIME...")
+    anime_entries = fetch_all(args.pages, "ANIME")
+    print("Fetching MANGA...")
+    manga_entries = fetch_all(args.pages, "MANGA")
+    
+    entries = anime_entries + manga_entries
+
     out_path = Path(__file__).parent.parent / "data" / "raw_anilist.json"
     out_path.parent.mkdir(exist_ok=True)
     out_path.write_text(json.dumps(entries, indent=2))
-    print(f"Fetched {len(entries)} anime entries -> {out_path}")
+    print(f"Fetched {len(entries)} total entries ({len(anime_entries)} anime, {len(manga_entries)} manga) -> {out_path}")

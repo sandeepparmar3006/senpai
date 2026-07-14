@@ -47,20 +47,40 @@ def generate_chunks(entry: dict) -> list[dict]:
     tags = ", ".join(t["name"] for t in (entry.get("tags") or [])[:8])
     studios = ", ".join(s["name"] for s in (entry.get("studios", {}).get("nodes") or []))
     episodes = EPISODE_OVERRIDES.get(entry_id, entry.get("episodes"))
+    chapters = entry.get("chapters")
     synonyms = ", ".join(entry.get("synonyms") or [])
     season = f"{entry.get('season') or ''} {entry.get('seasonYear') or ''}".strip()
     
     lore = LORE_OVERRIDES.get(entry_id, "")
     
+    related_media = []
+    if entry.get("relations"):
+        for edge in entry["relations"].get("edges") or []:
+            rel_type = edge.get("relationType", "").replace("_", " ").title()
+            rel_title = edge.get("node", {}).get("title", {}).get("romaji", "")
+            if rel_title:
+                related_media.append(f"{rel_type}: {rel_title}")
+    related_text = ", ".join(related_media)
+    if len(related_text) > 300:
+        related_text = related_text[:297] + "..."
+    
+    format_info = f"Format: {entry.get('format')}"
+    if episodes:
+        format_info += f", Episodes: {episodes}"
+    if chapters:
+        format_info += f", Chapters: {chapters}"
+    
     main_header = (
         f"Title: {title}\n"
         f"Synonyms: {synonyms}\n"
-        f"Format: {entry.get('format')}, Episodes: {episodes}\n"
+        f"{format_info}\n"
         f"Season: {season}\n"
         f"Genres: {genres}\n"
         f"Tags: {tags}\n"
         f"Studios: {studios}\n"
     )
+    if related_text:
+        main_header += f"Related: {related_text}\n"
     if lore:
         main_header += f"Lore: {lore}\n"
     main_header += "\n"
@@ -77,7 +97,9 @@ def generate_chunks(entry: dict) -> list[dict]:
         "metadata": {
             "genres": entry.get("genres"),
             "format": entry.get("format"),
+            "type": entry.get("type"),
             "episodes": episodes,
+            "chapters": chapters,
             "anilist_id": entry_id,
         }
     })

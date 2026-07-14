@@ -12,9 +12,9 @@ REQUEST_DELAY = 0.7  # AniList public rate limit is ~90 req/min
 QUERY = """
 query ($idIn: [Int]) {
   Page(page: 1, perPage: 50) {
-    media(id_in: $idIn, type: ANIME) {
+    media(id_in: $idIn) {
       id
-      reviews(sort: SCORE_DESC, perPage: 3) {
+      reviews(sort: SCORE_DESC, perPage: 6) {
         nodes {
           id
           body(asHtml: false)
@@ -49,7 +49,7 @@ def fetch_reviews_batch(anilist_ids: list[int], retries: int = 5) -> dict:
     return {}
 
 
-def fetch_all(anilist_entries: list[dict], max_reviews: int = 3) -> tuple[list[dict], int, bool]:
+def fetch_all(anilist_entries: list[dict], max_reviews: int = 6) -> tuple[list[dict], int, bool]:
     out = []
     skipped = 0
     aborted_early = False

@@ -15,10 +15,14 @@ if __name__ == "__main__":
     data_dir = Path(__file__).parent.parent / "data"
     data_dir.mkdir(exist_ok=True)
 
-    print(f"Fetching {args.pages} pages from AniList...")
-    raw_entries = fetch_all(args.pages)
+    print(f"Fetching {args.pages} pages of ANIME from AniList...")
+    anime_entries = fetch_all(args.pages, "ANIME")
+    print(f"Fetching {args.pages} pages of MANGA from AniList...")
+    manga_entries = fetch_all(args.pages, "MANGA")
+    
+    raw_entries = anime_entries + manga_entries
     (data_dir / "raw_anilist.json").write_text(json.dumps(raw_entries, indent=2))
-    print(f"  {len(raw_entries)} entries fetched")
+    print(f"  {len(raw_entries)} entries fetched ({len(anime_entries)} anime, {len(manga_entries)} manga)")
 
     print("Embedding chunks via Together AI...")
     cache_path = data_dir / "embedded.json"
