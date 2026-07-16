@@ -21,12 +21,18 @@ def test_keyword_hit():
     assert not keyword_hit({}, "anything")
     # regression: model emitted U+202F narrow no-break space inside "Pirate King"
     assert keyword_hit({"expected_keywords": ["Pirate King"]}, "the **Pirate\u202fKing** title")
+    # regression: model emitted U+2011 non-breaking hyphen inside "K-ON!"
+    assert keyword_hit({"expected_keywords": ["K-ON"]}, "shows like K\u2011ON! are popular")
 
 
 def test_build_context():
-    filter_rows = [{"title": "Naruto", "metadata": {"genres": ["Action"], "episodes": 220, "format": "TV"}}]
+    filter_rows = [{"title": "Naruto", "metadata": {"genres": ["Action"], "episodes": 220, "format": "TV"}, "total_count": 1}]
     ctx = build_context("filter_lookup", filter_rows)
-    assert ctx == "[Naruto] genres: Action, episodes: 220, format: TV"
+    assert ctx == (
+        'Total matching entries in the database: 1. Showing 1 below '
+        '(use the total above for any "how many" question, not a count of the list shown).\n'
+        "[Naruto] genres: Action, episodes: 220, format: TV"
+    )
 
     chunks = [{"title": "Naruto", "chunk_text": "A ninja story."}]
     assert build_context("semantic_search", chunks) == "[Naruto] A ninja story."
