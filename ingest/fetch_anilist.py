@@ -8,10 +8,10 @@ import requests
 ANILIST_URL = "https://graphql.anilist.co"
 
 QUERY = """
-query ($page: Int, $perPage: Int, $type: MediaType) {
+query ($page: Int, $perPage: Int, $type: MediaType, $sort: [MediaSort]) {
   Page(page: $page, perPage: $perPage) {
     pageInfo { hasNextPage }
-    media(type: $type, isAdult: false, sort: POPULARITY_DESC) {
+    media(type: $type, isAdult: false, sort: $sort) {
       id
       idMal
       title { romaji english }
@@ -55,11 +55,11 @@ query ($page: Int, $perPage: Int, $type: MediaType) {
 """
 
 
-def fetch_page(page: int, media_type: str, per_page: int = 50) -> dict:
+def fetch_page(page: int, media_type: str, per_page: int = 50, sort: str = "POPULARITY_DESC") -> dict:
     for attempt in range(5):
         resp = requests.post(
             ANILIST_URL,
-            json={"query": QUERY, "variables": {"page": page, "perPage": per_page, "type": media_type}},
+            json={"query": QUERY, "variables": {"page": page, "perPage": per_page, "type": media_type, "sort": [sort]}},
             timeout=30,
         )
         if resp.status_code == 429:
@@ -70,10 +70,10 @@ def fetch_page(page: int, media_type: str, per_page: int = 50) -> dict:
     resp.raise_for_status()
 
 
-def fetch_all(pages: int, media_type: str, per_page: int = 50) -> list[dict]:
+def fetch_all(pages: int, media_type: str, per_page: int = 50, sort: str = "POPULARITY_DESC") -> list[dict]:
     entries = []
     for page in range(1, pages + 1):
-        data = fetch_page(page, media_type, per_page)
+        data = fetch_page(page, media_type, per_page, sort)
         entries.extend(data["media"])
         if not data["pageInfo"]["hasNextPage"]:
             break
