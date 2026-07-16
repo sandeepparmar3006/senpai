@@ -163,9 +163,12 @@ async function filterLookup(args) {
 
 function buildContext(routeName, results) {
   if (routeName === "filter_lookup") {
-    return results
+    const total = results[0]?.total_count ?? results.length;
+    const header = `Total matching entries in the database: ${total}. Showing ${results.length} below (use the total above for any "how many" question, not a count of the list shown).`;
+    const rows = results
       .map((r) => `[${r.title}] genres: ${(r.metadata.genres || []).join(", ")}, episodes: ${r.metadata.episodes}, format: ${r.metadata.format}`)
       .join("\n");
+    return `${header}\n${rows}`;
   }
   return results.map((c) => `[${c.title}] ${c.chunk_text}`).join("\n\n");
 }

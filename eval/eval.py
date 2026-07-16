@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import requests
@@ -71,15 +72,25 @@ TOOLS = [
 ]
 
 
+def _post_with_retry(url: str, json_body: dict, attempts: int = 4) -> dict:
+    for attempt in range(attempts):
+        try:
+            resp = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
+                json=json_body,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.exceptions.RequestException, requests.exceptions.SSLError) as e:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(min(2**attempt, 20))
+
+
 def _chat_completion(body: dict) -> dict:
-    resp = requests.post(
-        "https://api.together.xyz/v1/chat/completions",
-        headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
-        json={"model": CHAT_MODEL, **body},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    return _post_with_retry("https://api.together.xyz/v1/chat/completions", {"model": CHAT_MODEL, **body})
 
 
 def route(question: str) -> dict | None:
@@ -106,14 +117,8 @@ def route(question: str) -> dict | None:
 
 
 def embed_query(text: str) -> list[float]:
-    resp = requests.post(
-        "https://api.together.xyz/v1/embeddings",
-        headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
-        json={"model": EMBED_MODEL, "input": text},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["data"][0]["embedding"]
+    data = _post_with_retry("https://api.together.xyz/v1/embeddings", {"model": EMBED_MODEL, "input": text})
+    return data["data"][0]["embedding"]
 
 
 def semantic_search(query: str, k: int = K, source_filter: str | None = None) -> list[dict]:
@@ -141,11 +146,17 @@ def filter_lookup(args: dict) -> list[dict]:
 
 def build_context(route_name: str, results: list[dict]) -> str:
     if route_name == "filter_lookup":
-        return "\n".join(
+        total = results[0].get("total_count", len(results)) if results else 0
+        header = (
+            f'Total matching entries in the database: {total}. Showing {len(results)} below '
+            f'(use the total above for any "how many" question, not a count of the list shown).'
+        )
+        rows = "\n".join(
             f"[{r['title']}] genres: {', '.join(r['metadata'].get('genres') or [])}, "
             f"episodes: {r['metadata'].get('episodes')}, format: {r['metadata'].get('format')}"
             for r in results
         )
+        return f"{header}\n{rows}"
     return "\n\n".join(f"[{c['title']}] {c['chunk_text']}" for c in results)
 
 
@@ -171,7 +182,9 @@ def retrieval_hit(pair: dict, retrieved_titles: set[str]) -> bool:
 
 
 def _norm(text: str) -> str:
-    # models sometimes emit unicode spaces (e.g. U+202F in "Pirate King") that break exact substring match
+    # models sometimes emit unicode spaces (e.g. U+202F in "Pirate King") or unicode dashes
+    # (e.g. U+2011 in "K‑ON!") that break exact substring match against ASCII expected keywords
+    text = re.sub(r"[‐-―−]", "-", text)
     return re.sub(r"\s+", " ", text.lower())
 
 
@@ -205,13 +218,24 @@ def run_eval(qa_pairs: list[dict]) -> None:
             results = semantic_search(pair["question"])
             retrieved_titles = {c["title"] for c in results}
 
-        if retrieval_hit(pair, retrieved_titles):
+        rhit = retrieval_hit(pair, retrieved_titles)
+        if rhit:
             retrieval_hits += 1
 
         answer = generate_answer(pair["question"], route_name, results) if results else "No matching anime found."
-        if keyword_hit(pair, answer):
+        khit = keyword_hit(pair, answer)
+        if khit:
             keyword_matches += 1
-        print(f"Q: {pair['question']}\n[{route_name}] A: {answer}\n")
+
+        flags = []
+        if route_name != expected_route:
+            flags.append(f"ROUTE expected={expected_route}")
+        if not rhit:
+            flags.append(f"RETRIEVAL expected={pair.get('expected_title') or pair.get('expected_titles_any')} got={retrieved_titles}")
+        if not khit:
+            flags.append(f"KEYWORD expected_any={pair.get('expected_keywords')}")
+        tag = "FAIL: " + "; ".join(flags) if flags else "PASS"
+        print(f"[{tag}] Q: {pair['question']}\n[{route_name}] A: {answer}\n")
 
     if total == 0:
         print("No filled-in questions in qa_pairs.json yet — nothing to eval.")
