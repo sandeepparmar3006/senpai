@@ -92,10 +92,14 @@ To make the knowledge base truly comprehensive, we expanded the ingestion pipeli
 |---|---|---|---|
 | First run | 100% (45/45) | 93% (42/45) | 93% (42/45) |
 | After tool-schema fix | 98% (44/45) | 98% (44/45) | 96% (43/45) |
+| Baseline, corpus at ~4,900 chunks (2026-07-16) | 100% (45/45) | 93% (42/45) | 82% (37/45) |
+| After `filter_media` limit/bias fix (`cdc51d6`) | 100% (45/45) | 93% (42/45) | 91% (41/45) |
 
 The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
 
-The three remaining misses are reported, not patched: one correct answer rejected by strict keyword scoring ("a single punch" vs. expected "one punch"), one run-to-run route flip that still retrieved the right titles, and one generation-stage misread of the retrieved context. Tuning the held-out set until it hits 100% would defeat its purpose.
+As the corpus grew (README's "expanded database" work above added thousands more chunks), a real bug surfaced: `filter_media` capped results at 20 rows ordered by episode count descending, which silently hid shorter well-known titles (HAIKYU!!, Toradora!, Horimiya, Violet Evergarden) behind long-running shows whenever a genre had more matches than the cap — Slice of Life alone has 646 distinct matching titles in the live DB. Reordered to alphabetical and added a `total_count` column so the model states accurate whole-corpus counts instead of miscounting a truncated sample (this alone fixed two counting questions outright). Two of the eval's own expected values had also gone stale as the corpus grew (movie count assumed 19, actually 308; >200-episode count assumed 6, actually 11) and were corrected against the live DB.
+
+Three misses remain, reported not patched, because they're a genuine architecture tradeoff rather than a quick fix: broad "list all shows tagged X" questions still truncate at 50 rows when the matching genre has hundreds of members, and any fixed row limit will arbitrarily miss some expected titles — the real fix is a UX decision (partial/sampled answers with explicit "showing N of total" framing, or a different display for large result sets), since `api/chat.js` currently renders every returned row as a source card with no slicing. Tuning the held-out set until it hits 100% would defeat its purpose.
 
 ## Architecture
 
