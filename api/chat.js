@@ -183,6 +183,32 @@ async function filterLookup(args) {
   return deduped;
 }
 
+// Feeds corpus-growth prioritization (ingest/review_misses.py). Threshold is
+// empirical, not exact: hits on titles that exist in the corpus cluster
+// 0.84-0.90 similarity, genuine gaps cluster 0.80-0.83 -- a review-queue
+// signal, not a hard cutoff.
+const MISS_SIMILARITY_THRESHOLD = 0.83;
+
+async function logQuery(question, routeName, results) {
+  let similarity = null;
+  let resultCount = results.length;
+  let isMiss;
+  if (routeName === "filter_lookup") {
+    resultCount = results[0]?.total_count ?? results.length;
+    isMiss = resultCount === 0;
+  } else {
+    similarity = results[0]?.similarity ?? null;
+    isMiss = similarity !== null && similarity < MISS_SIMILARITY_THRESHOLD;
+  }
+  await supabase.from("query_log").insert({
+    question,
+    route: routeName,
+    similarity,
+    result_count: resultCount,
+    is_miss: isMiss,
+  });
+}
+
 function buildContext(routeName, results) {
   if (routeName === "filter_lookup") {
     const total = results[0]?.total_count ?? results.length;
@@ -288,6 +314,8 @@ export default async function handler(req, res) {
     res.status(502).json({ error: "Lookup failed. Try again in a moment." });
     return;
   }
+
+  logQuery(query, routeName, results).catch(() => {}); // fire-and-forget: never block chat on logging
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
