@@ -129,15 +129,37 @@ async function embed(text) {
   return data.data[0].embedding;
 }
 
+// Sibling entries (sequels, OVAs, side stories) of the same franchise crowd out
+// the top-ranked title's own chunks with near-duplicate header text. Over-fetch
+// and cap how many slots other titles can take so the top-ranked title's
+// deeper chunks (description, lore) still make it into context.
+const NONPRIMARY_TITLE_CAP = 2;
+
+function dedupeSiblingTitles(pool, k) {
+  const primaryTitle = pool[0]?.title;
+  const kept = [];
+  let nonPrimaryCount = 0;
+  for (const chunk of pool) {
+    if (kept.length >= k) break;
+    if (chunk.title === primaryTitle) {
+      kept.push(chunk);
+    } else if (nonPrimaryCount < NONPRIMARY_TITLE_CAP) {
+      kept.push(chunk);
+      nonPrimaryCount += 1;
+    }
+  }
+  return kept;
+}
+
 async function semanticSearch(searchQuery, sourceFilter = null) {
   const embedding = await embed(searchQuery);
   const { data, error } = await supabase.rpc("match_media_chunks", {
     query_embedding: embedding,
-    match_count: K,
+    match_count: K * 4,
     source_filter: sourceFilter,
   });
   if (error) throw error;
-  return data;
+  return dedupeSiblingTitles(data, K);
 }
 
 async function filterLookup(args) {

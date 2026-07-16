@@ -121,13 +121,34 @@ def embed_query(text: str) -> list[float]:
     return data["data"][0]["embedding"]
 
 
+# Sibling entries (sequels, OVAs, side stories) of the same franchise crowd out
+# the top-ranked title's own chunks with near-duplicate header text. Over-fetch
+# and cap how many slots other titles can take so the top-ranked title's
+# deeper chunks (description, lore) still make it into context.
+NONPRIMARY_TITLE_CAP = 2
+
+
+def _dedupe_sibling_titles(pool: list[dict], k: int) -> list[dict]:
+    primary_title = pool[0]["title"] if pool else None
+    kept, nonprimary_count = [], 0
+    for chunk in pool:
+        if len(kept) >= k:
+            break
+        if chunk["title"] == primary_title:
+            kept.append(chunk)
+        elif nonprimary_count < NONPRIMARY_TITLE_CAP:
+            kept.append(chunk)
+            nonprimary_count += 1
+    return kept
+
+
 def semantic_search(query: str, k: int = K, source_filter: str | None = None) -> list[dict]:
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     embedding = embed_query(query)
     result = client.rpc(
-        "match_media_chunks", {"query_embedding": embedding, "match_count": k, "source_filter": source_filter}
+        "match_media_chunks", {"query_embedding": embedding, "match_count": k * 4, "source_filter": source_filter}
     ).execute()
-    return result.data
+    return _dedupe_sibling_titles(result.data, k)
 
 
 def filter_lookup(args: dict) -> list[dict]:
