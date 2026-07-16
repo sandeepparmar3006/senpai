@@ -34,6 +34,10 @@ $$;
 
 -- Structured whole-corpus filter used by the filter_lookup tool (api/chat.js).
 -- Arg names must match the RPC call in filterLookup(); all filters optional.
+-- Ordered by id (= AniList POPULARITY_DESC ingestion order, see ingest/fetch_anilist.py)
+-- rather than alphabetically: broad queries (e.g. "romance <=13 episodes" = 691 matches)
+-- always truncate to 50, and alphabetical order buries famous titles behind "A"/"B" names
+-- that happen to also match. Popularity order surfaces the titles users actually mean.
 create or replace function filter_media(
   genre_filter text default null,
   min_episodes int default null,
@@ -49,6 +53,6 @@ as $$
     and (min_episodes is null or (metadata->>'episodes')::int >= min_episodes)
     and (max_episodes is null or (metadata->>'episodes')::int <= max_episodes)
     and (format_filter is null or metadata->>'format' = format_filter)
-  order by title
+  order by id
   limit 50;
 $$;
