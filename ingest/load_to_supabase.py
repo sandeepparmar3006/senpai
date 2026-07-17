@@ -1,9 +1,11 @@
 """Load embedded chunks into Supabase pgvector table."""
 import json
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+from postgrest.exceptions import APIError
 from supabase import create_client
 
 load_dotenv()
@@ -11,7 +13,11 @@ load_dotenv()
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
-BATCH_SIZE = 100
+# HNSW index insertion is slow per-row (graph traversal on every write), unlike
+# the old IVFFlat index -- 100-row batches started hitting Supabase's statement
+# timeout once the table grew past ~1000 rows. Smaller batches + retry instead
+# of a bigger timeout, since we don't control the DB-side statement_timeout.
+BATCH_SIZE = 25
 
 
 def load(chunks: list[dict], source: str = "anilist") -> int:
@@ -33,9 +39,17 @@ def load(chunks: list[dict], source: str = "anilist") -> int:
     }
     rows = list(deduped.values())
     for i in range(0, len(rows), BATCH_SIZE):
-        client.table("media_chunks").upsert(
-            rows[i : i + BATCH_SIZE], on_conflict="source,source_id"
-        ).execute()
+        batch = rows[i : i + BATCH_SIZE]
+        for attempt in range(5):
+            try:
+                client.table("media_chunks").upsert(
+                    batch, on_conflict="source,source_id"
+                ).execute()
+                break
+            except APIError:
+                if attempt == 4:
+                    raise
+                time.sleep(2**attempt)
     return len(rows)
 
 

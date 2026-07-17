@@ -47,7 +47,7 @@
   {
     "question": "What device do players use to control their avatars in Sword Art Online?",
     "expected_title": "Sword Art Online",
-    "expected_keywords": ["Nerve Gear"]
+    "expected_keywords": ["NerveGear", "Nerve Gear"]
   },
   {
     "question": "What is the core alchemical law in Fullmetal Alchemist: Brotherhood that says something of equal value must be lost?",

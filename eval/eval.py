@@ -195,10 +195,11 @@ def generate_answer(question: str, route_name: str, results: list[dict]) -> str:
 
 
 def retrieval_hit(pair: dict, retrieved_titles: set[str]) -> bool:
+    retrieved_lower = {t.lower() for t in retrieved_titles}
     if pair.get("expected_title"):
-        return pair["expected_title"] in retrieved_titles
+        return pair["expected_title"].lower() in retrieved_lower
     if pair.get("expected_titles_any"):
-        return bool(retrieved_titles & set(pair["expected_titles_any"]))
+        return bool(retrieved_lower & {t.lower() for t in pair["expected_titles_any"]})
     return False
 
 
