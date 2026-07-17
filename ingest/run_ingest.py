@@ -35,8 +35,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  Failed to load cache: {e}")
 
-    chunks = process(raw_entries, cache)
-    cache_path.write_text(json.dumps(chunks, indent=2))
+    chunks = process(raw_entries, cache, cache_path=cache_path)
     print(f"  {len(chunks)} chunks embedded")
 
     print("Loading into Supabase...")

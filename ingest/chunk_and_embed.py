@@ -49,6 +49,8 @@ def generate_chunks(entry: dict) -> list[dict]:
     episodes = EPISODE_OVERRIDES.get(entry_id, entry.get("episodes"))
     chapters = entry.get("chapters")
     synonyms = ", ".join(entry.get("synonyms") or [])
+    if len(synonyms) > 300:
+        synonyms = synonyms[:297] + "..."
     season = f"{entry.get('season') or ''} {entry.get('seasonYear') or ''}".strip()
     
     lore = LORE_OVERRIDES.get(entry_id, "")
@@ -183,19 +185,20 @@ def embed_text(text: str, retries: int = 6) -> list[float]:
             time.sleep(min(2**attempt, 20))
 
 
-def process(raw_entries: list[dict], cache: dict = None) -> list[dict]:
+def process(raw_entries: list[dict], cache: dict = None, cache_path: Path = None, checkpoint_every: int = 100) -> list[dict]:
     if cache is None:
         cache = {}
     embedded_chunks = []
+    since_checkpoint = 0
     for entry in tqdm(raw_entries, desc="embedding"):
         chunks_for_entry = generate_chunks(entry)
-        
+
         for chunk in chunks_for_entry:
             text = chunk["chunk_text"]
             if not text.strip():
                 continue
             source_id = chunk["source_id"]
-            
+
             cached_item = cache.get(source_id)
             if cached_item and isinstance(cached_item, dict) and cached_item.get("chunk_text") == text:
                 embedding = cached_item["embedding"]
@@ -205,10 +208,17 @@ def process(raw_entries: list[dict], cache: dict = None) -> list[dict]:
             else:
                 embedding = embed_text(text)
                 time.sleep(0.1)
-                
+                since_checkpoint += 1
+
             chunk["embedding"] = embedding
             embedded_chunks.append(chunk)
-            
+
+            if cache_path and since_checkpoint >= checkpoint_every:
+                cache_path.write_text(json.dumps(embedded_chunks, indent=2))
+                since_checkpoint = 0
+
+    if cache_path:
+        cache_path.write_text(json.dumps(embedded_chunks, indent=2))
     return embedded_chunks
 
 
