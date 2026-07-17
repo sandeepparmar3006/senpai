@@ -39,6 +39,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | Router added | 82% | 77% | 77% |
 | After router fix (`45c27b5`) | 100% | 100% | 100% |
 | Expanded Database (1000 entries) + HNSW | 100% | 86% | 91% |
+| Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% | 77% | 95% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -95,6 +96,7 @@ To make the knowledge base truly comprehensive, we expanded the ingestion pipeli
 | Baseline, corpus at ~4,900 chunks (2026-07-16) | 100% (45/45) | 93% (42/45) | 82% (37/45) |
 | After `filter_media` limit/bias fix (`cdc51d6`) | 100% (45/45) | 93% (42/45) | 91% (41/45) |
 | After sibling-title dedupe (`61e19bd`) + popularity ordering (`7b0a772`) | 98% (44/45) | 98% (44/45) | 96% (43/45) |
+| Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% (45/45) | 100% (45/45) | 93% (42/45) |
 
 The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
 
@@ -140,7 +142,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 2. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
 3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 4. `pip install -r requirements.txt`
-5. `python ingest/run_ingest.py --pages 20` (20 pages x 50 = 1000 anime entries)
+5. `python ingest/run_ingest.py --pages 40` (40 pages x 50 = 2000 anime + 2000 manga entries)
 6. `python ingest/run_ingest_reviews.py` — fetches reviews directly via AniList, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
 7. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
 8. `npm install && vercel dev` locally, `vercel --prod` to deploy.
@@ -151,7 +153,7 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 - ~~Streaming responses + rate limiting~~ — done, see "Architecture" and "Production hardening" above.
 - ~~AniList reviews as a second text source for opinion-based questions~~ — done: `opinion_search` tool routes to fan reviews (`match_media_chunks` filtered to `source = 'jikan_review'`), source cards show reviewer score instead of similarity.
 - ~~UI Polish (Blocks 1-5)~~ — done: Added streaming token animations, skeleton loaders, suggestion cards, and an immersive empty state with a subtle "quiet otaku" aesthetic.
-- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 1000 anime entries (plus manga variants) and upgraded pgvector index to HNSW for fast search recall.
+- ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 4000 entries (2000 anime + 2000 manga) and upgraded pgvector index to HNSW for fast search recall. Corpus is SFW throughout: `isAdult: false` filter never touched.
 - ~~Query-miss logging for targeted corpus growth~~ — done: `query_log` table flags likely corpus gaps per request; `ingest/review_misses.py` ranks recurring misses for triage. Next step once real traffic accumulates: ingest confirmed-missing titles from AniList by name.
 - ~~Weekly freshness check~~ — done: GitHub Actions cron re-ingests the most recently updated AniList entries every Monday, catching new releases and metadata drift without re-embedding unchanged chunks.
 
