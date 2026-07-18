@@ -136,6 +136,10 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 
 **Production hardening**: this is a public URL calling a paid LLM per request with no auth — a real abuse/wallet-drain surface, not a hypothetical one. `check_rate_limit()` (`supabase/rate_limit.sql`) enforces a per-IP cap (15/min) and a global daily ceiling (1000/day) via an atomic Postgres upsert, shared across all serverless instances (in-memory counters reset on every cold start, so they don't work here). It fails open — a `rate_limits` outage degrades to unlimited rather than breaking chat.
 
+## Known Limitation
+
+Supabase's free tier caps database storage at 500MB. As of 2026-07-18 the corpus sits at 594MB across 41,288 rows (AniList entries + fan reviews), about 19% over. This isn't row-count bloat: dead tuples are under 2%, and the `media_chunks` table itself is only 54MB. The real cost is the HNSW vector index (319MB, over half the total), which stores a full copy of every 1024-dimension embedding inside the index for distance calculation, on top of the copy already held in the table. Rebuilding the index with a lower `m` (16 to 8, the standard HNSW size/recall tradeoff knob) was tried first and only saved 1MB, confirming graph connectivity isn't the driver. The app remains fully functional at this size (verified live post-rebuild), so rather than trade away retrieval quality (switching to IVFFlat) or cut corpus size right after tuning it, the fix is deferred until the next expansion forces the question.
+
 ## Setup
 
 1. **Supabase**: create a project, run `supabase/schema.sql` and `supabase/rate_limit.sql` in the SQL editor. Grab the project URL + service role key (Settings > API).
