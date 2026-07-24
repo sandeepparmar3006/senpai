@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Readable } from "node:stream";
+import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qdrantFilterQuery } from "./qdrantStore.js";
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
@@ -153,24 +154,18 @@ function dedupeSiblingTitles(pool, k) {
 
 async function semanticSearch(searchQuery, sourceFilter = null) {
   const embedding = await embed(searchQuery);
-  const { data, error } = await supabase.rpc("match_media_chunks", {
-    query_embedding: embedding,
-    match_count: K * 4,
-    source_filter: sourceFilter,
-  });
-  if (error) throw error;
-  return dedupeSiblingTitles(data, K);
+  const pool = await qdrantSearch(getQdrantClient(), embedding, K * 4, sourceFilter);
+  return dedupeSiblingTitles(pool, K);
 }
 
 async function filterLookup(args) {
-  const { data, error } = await supabase.rpc("filter_media", {
-    genre_filter: args.genre ?? null,
-    min_episodes: args.min_episodes ?? null,
-    max_episodes: args.max_episodes ?? null,
-    format_filter: args.format ?? null,
+  const data = await qdrantFilterQuery(getQdrantClient(), {
+    genre: args.genre ?? null,
+    minEpisodes: args.min_episodes ?? null,
+    maxEpisodes: args.max_episodes ?? null,
+    format: args.format ?? null,
   });
-  if (error) throw error;
-  
+
   const seen = new Set();
   const deduped = [];
   for (const r of data) {

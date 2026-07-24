@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fetch_anilist import fetch_all
 from chunk_and_embed import process
-from load_to_supabase import load
+from load_to_qdrant import load
 
 PAGES = 3  # 150 most recently updated entries/week; raise if weekly volume grows
 
@@ -39,6 +39,6 @@ if __name__ == "__main__":
     cache.update({c["source_id"]: {"chunk_text": c["chunk_text"], "embedding": c["embedding"]} for c in chunks})
     cache_path.write_text(json.dumps([{"source_id": k, **v} for k, v in cache.items()], indent=2))
 
-    print("Upserting into Supabase...")
+    print("Upserting into Qdrant...")
     count = load(chunks)
     print(f"  {count} rows upserted. Done.")

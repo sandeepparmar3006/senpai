@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fetch_anilist import fetch_all
 from chunk_and_embed import process
-from load_to_supabase import load
+from load_to_qdrant import load
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -38,6 +38,6 @@ if __name__ == "__main__":
     chunks = process(raw_entries, cache, cache_path=cache_path)
     print(f"  {len(chunks)} chunks embedded")
 
-    print("Loading into Supabase...")
+    print("Loading into Qdrant...")
     count = load(chunks)
     print(f"  {count} rows loaded. Done.")

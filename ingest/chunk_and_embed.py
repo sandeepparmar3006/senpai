@@ -37,7 +37,14 @@ LORE_OVERRIDES = {
 }
 
 
-def generate_chunks(entry: dict) -> list[dict]:
+def generate_chunks(entry: dict, entry_rank: int = 0) -> list[dict]:
+    # Qdrant point IDs are UUIDs with no inherent order, unlike Postgres's
+    # bigserial id -- popularity_rank replaces it for filter_lookup's ordering.
+    # Tie-break offset keeps an entry's own main chunk sorting before its
+    # cast/lore chunks (main=+0, cast=+1, lore=+2...), matching the old
+    # id-ordering's incidental behavior (main chunk always inserted first).
+    RANK_STRIDE = 1000  # generous headroom so a busy entry's lore-chunk count never spills into the next entry's rank
+    main_rank = entry_rank * RANK_STRIDE
     chunks = []
     entry_id = entry.get("id")
     title = entry["title"].get("english") or entry["title"].get("romaji")
@@ -103,6 +110,7 @@ def generate_chunks(entry: dict) -> list[dict]:
             "episodes": episodes,
             "chapters": chapters,
             "anilist_id": entry_id,
+            "popularity_rank": main_rank,
         }
     })
     
@@ -127,7 +135,8 @@ def generate_chunks(entry: dict) -> list[dict]:
             "title": title,
             "chunk_text": cast_text,
             "metadata": {
-                "anilist_id": entry_id
+                "anilist_id": entry_id,
+                "popularity_rank": main_rank + 1,
             }
         })
     
@@ -147,7 +156,7 @@ def generate_chunks(entry: dict) -> list[dict]:
                         "source_id": f"{entry_id}_lore_{lore_index}",
                         "title": title,
                         "chunk_text": current_lore_chunk[:1300],
-                        "metadata": {"anilist_id": entry_id}
+                        "metadata": {"anilist_id": entry_id, "popularity_rank": main_rank + 1 + lore_index}
                     })
                     lore_index += 1
                 # start new chunk
@@ -162,9 +171,9 @@ def generate_chunks(entry: dict) -> list[dict]:
             "source_id": f"{entry_id}_lore_{lore_index}",
             "title": title,
             "chunk_text": current_lore_chunk[:1300],
-            "metadata": {"anilist_id": entry_id}
+            "metadata": {"anilist_id": entry_id, "popularity_rank": main_rank + 1 + lore_index}
         })
-        
+
     return chunks
 
 
@@ -190,8 +199,8 @@ def process(raw_entries: list[dict], cache: dict = None, cache_path: Path = None
         cache = {}
     embedded_chunks = []
     since_checkpoint = 0
-    for entry in tqdm(raw_entries, desc="embedding"):
-        chunks_for_entry = generate_chunks(entry)
+    for entry_rank, entry in enumerate(tqdm(raw_entries, desc="embedding")):
+        chunks_for_entry = generate_chunks(entry, entry_rank)
 
         for chunk in chunks_for_entry:
             text = chunk["chunk_text"]

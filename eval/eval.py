@@ -2,19 +2,22 @@
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "ingest"))
+from qdrant_store import get_client as get_qdrant_client  # noqa: E402
+from qdrant_store import search as qdrant_search  # noqa: E402
+from qdrant_store import filter_query as qdrant_filter_query  # noqa: E402
 
 load_dotenv()
 
 # .get() so the module imports without credentials (e.g. in CI); network calls still require them
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
 EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
 CHAT_MODEL = "openai/gpt-oss-20b"  # open-weight, serverless-accessible on this account
@@ -143,26 +146,22 @@ def _dedupe_sibling_titles(pool: list[dict], k: int) -> list[dict]:
 
 
 def semantic_search(query: str, k: int = K, source_filter: str | None = None) -> list[dict]:
-    client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     embedding = embed_query(query)
-    result = client.rpc(
-        "match_media_chunks", {"query_embedding": embedding, "match_count": k * 4, "source_filter": source_filter}
-    ).execute()
-    return _dedupe_sibling_titles(result.data, k)
+    pool = qdrant_search(get_qdrant_client(), embedding, k=k * 4, source_filter=source_filter)
+    return _dedupe_sibling_titles(pool, k)
 
 
 def filter_lookup(args: dict) -> list[dict]:
-    client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    result = client.rpc(
-        "filter_media",
-        {
-            "genre_filter": args.get("genre"),
-            "min_episodes": args.get("min_episodes"),
-            "max_episodes": args.get("max_episodes"),
-            "format_filter": args.get("format"),
-        },
-    ).execute()
-    return result.data
+    rows, total_count = qdrant_filter_query(
+        get_qdrant_client(),
+        genre=args.get("genre"),
+        min_episodes=args.get("min_episodes"),
+        max_episodes=args.get("max_episodes"),
+        format=args.get("format"),
+    )
+    for r in rows:
+        r["total_count"] = total_count
+    return rows
 
 
 def build_context(route_name: str, results: list[dict]) -> str:

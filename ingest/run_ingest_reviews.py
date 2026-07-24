@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fetch_anilist_reviews import fetch_all
 from chunk_and_embed_reviews import process
-from load_to_supabase import load
+from load_to_qdrant import load
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 PROGRESS_FILE = DATA_DIR / "reviews_ingest_progress.json"
