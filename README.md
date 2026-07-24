@@ -23,9 +23,9 @@ Each source is a card, not a bare pill: cover art (fetched from AniList), title,
 
 Top-k similarity search silently fails on whole-corpus questions: "which anime have more than 150 episodes?" needs to scan all 250 rows, not the 5 most similar chunks. So the model picks a tool per question via real function-calling (`tool_choice: required`), not a manual classifier prompt:
 
-- `semantic_search` — embed the query, pgvector `match_media_chunks()` RPC over AniList synopses (plot/character/terminology questions)
-- `filter_lookup` — `filter_media()` SQL RPC over all rows (genre/episode/format filters, lists, counts)
-- `opinion_search` — same `match_media_chunks()` RPC, filtered to MAL fan reviews instead of synopses (opinion/reception/recommendation questions)
+- `semantic_search` — embed the query, Qdrant cosine similarity search over AniList synopses (plot/character/terminology questions)
+- `filter_lookup` — Qdrant payload-filtered query over all rows (genre/episode/format filters, lists, counts)
+- `opinion_search` — same Qdrant search, filtered to MAL fan reviews instead of synopses (opinion/reception/recommendation questions)
 
 One production detail worth knowing: open-weight models sometimes emit a hallucinated answer in `message.content` *alongside* the real `tool_calls`. The implementation discards `content` and only trusts the executed tool result.
 
@@ -40,6 +40,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | After router fix (`45c27b5`) | 100% | 100% | 100% |
 | Expanded Database (1000 entries) + HNSW | 100% | 86% | 91% |
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% | 77% | 95% |
+| Post-Qdrant-migration verification (2026-07-24) | 100% | 86% | 100% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -97,6 +98,7 @@ To make the knowledge base truly comprehensive, we expanded the ingestion pipeli
 | After `filter_media` limit/bias fix (`cdc51d6`) | 100% (45/45) | 93% (42/45) | 91% (41/45) |
 | After sibling-title dedupe (`61e19bd`) + popularity ordering (`7b0a772`) | 98% (44/45) | 98% (44/45) | 96% (43/45) |
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% (45/45) | 100% (45/45) | 93% (42/45) |
+| Post-Qdrant-migration verification (2026-07-24) | 100% (45/45) | 100% (45/45) | 98% (44/45) |
 
 The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
 
@@ -115,18 +117,20 @@ AniList GraphQL (isAdult: false filtered at fetch time)        AniList GraphQL (
         |                                                              |
    ingest/chunk_and_embed.py     -> data/embedded.json    ingest/chunk_and_embed_reviews.py -> data/embedded_reviews.json
         | (Together AI embeddings, intfloat/multilingual-e5-large-instruct, 1024-dim, both sources)
-   ingest/load_to_supabase.py    -> Supabase pgvector table (source: "anilist" | "jikan_review")
+   ingest/load_to_qdrant.py      -> Qdrant Cloud collection "media_chunks" (source: "anilist" | "jikan_review")
         |
    api/chat.js (Vercel function)
-        | check_rate_limit() RPC -> per-IP (15/min) + global (1000/day) cap, fail-open
+        | check_rate_limit() RPC (Supabase) -> per-IP (15/min) + global (1000/day) cap, fail-open
         | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
-        |   |-- semantic_search  -> embed query -> match_media_chunks() RPC (source: anilist, cosine similarity)
-        |   |-- filter_lookup    -> filter_media() RPC
-        |   |-- opinion_search   -> embed query -> match_media_chunks() RPC (source: jikan_review)
+        |   |-- semantic_search  -> embed query -> Qdrant search (source: anilist, cosine similarity)
+        |   |-- filter_lookup    -> Qdrant payload-filtered query, ordered by popularity_rank
+        |   |-- opinion_search   -> embed query -> Qdrant search (source: jikan_review)
         | streamGenerate(question, route_results) -> Together chat completion, stream: true
         |   -> answer piped to the client as SSE tokens as they're generated
    public/ (chat UI: renders tokens live, shows route + retrieval detail per answer)
 ```
+
+Rate limiting (`check_rate_limit`) and query-miss logging (`query_log`) stay on Supabase — small relational tables, unaffected by the vector-store migration below.
 
 Corpus is SFW: the AniList fetch query hard-filters `isAdult: false`, so adult-tagged entries never enter the pipeline.
 
@@ -136,20 +140,23 @@ Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat model
 
 **Production hardening**: this is a public URL calling a paid LLM per request with no auth — a real abuse/wallet-drain surface, not a hypothetical one. `check_rate_limit()` (`supabase/rate_limit.sql`) enforces a per-IP cap (15/min) and a global daily ceiling (1000/day) via an atomic Postgres upsert, shared across all serverless instances (in-memory counters reset on every cold start, so they don't work here). It fails open — a `rate_limits` outage degrades to unlimited rather than breaking chat.
 
-## Known Limitation
+## Vector store migration (2026-07-24)
 
-Supabase's free tier caps database storage at 500MB. As of 2026-07-18 the corpus sits at 594MB across 41,288 rows (AniList entries + fan reviews), about 19% over. This isn't row-count bloat: dead tuples are under 2%, and the `media_chunks` table itself is only 54MB. The real cost is the HNSW vector index (319MB, over half the total), which stores a full copy of every 1024-dimension embedding inside the index for distance calculation, on top of the copy already held in the table. Rebuilding the index with a lower `m` (16 to 8, the standard HNSW size/recall tradeoff knob) was tried first and only saved 1MB, confirming graph connectivity isn't the driver. The app remains fully functional at this size (verified live post-rebuild), so rather than trade away retrieval quality (switching to IVFFlat) or cut corpus size right after tuning it, the fix is deferred until the next expansion forces the question.
+The corpus previously hit Supabase's 500MB free-tier storage cap (594MB across 41,288 rows) — not row-count bloat, but pgvector's HNSW index storing a full second copy of every 1024-dimension embedding for distance calculation, on top of the table's own copy (319MB, over half the total). Tuning the index (`m` 16→8) barely moved the number, since raw vector storage, not graph connectivity, was the actual cost.
+
+Fixed by migrating the vector store to Qdrant Cloud, a purpose-built vector database without the duplicate-storage overhead — `media_chunks` (all 42,175 rows) moved fully to Qdrant; `rate_limits` and `query_log` stayed on Supabase (small relational tables, unaffected). Verified via the full eval suite before cutover (no regression, several metrics improved — see Eval results above) and live spot-checks of all three routes post-deploy.
 
 ## Setup
 
-1. **Supabase**: create a project, run `supabase/schema.sql` and `supabase/rate_limit.sql` in the SQL editor. Grab the project URL + service role key (Settings > API).
-2. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
-3. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
-4. `pip install -r requirements.txt`
-5. `python ingest/run_ingest.py --pages 40` (40 pages x 50 = 2000 anime + 2000 manga entries)
-6. `python ingest/run_ingest_reviews.py` — fetches reviews directly via AniList, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
-7. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
-8. `npm install && vercel dev` locally, `vercel --prod` to deploy.
+1. **Qdrant Cloud**: create a free cluster at https://cloud.qdrant.io. The `media_chunks` collection (1024-dim, cosine distance) and its payload indexes are created automatically on first run via `ingest/qdrant_store.py::ensure_collection()` — no manual setup needed beyond the cluster itself. Grab the cluster URL + API key.
+2. **Supabase**: create a project, run `supabase/rate_limit.sql` in the SQL editor (rate limiting + query-miss logging only — vectors live in Qdrant). Grab the project URL + service role key (Settings > API).
+3. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
+4. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`.
+5. `pip install -r requirements.txt`
+6. `python ingest/run_ingest.py --pages 40` (40 pages x 50 = 2000 anime + 2000 manga entries)
+7. `python ingest/run_ingest_reviews.py` — fetches reviews directly via AniList, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
+8. `python eval/eval.py` — routes every question through the production router, prints route/retrieval/answer rates.
+9. `npm install && vercel dev` locally, `vercel --prod` to deploy.
 
 ## Roadmap
 
@@ -160,6 +167,7 @@ Supabase's free tier caps database storage at 500MB. As of 2026-07-18 the corpus
 - ~~Corpus expansion & Index upgrade~~ — done: Expanded the catalog to 4000 entries (2000 anime + 2000 manga) and upgraded pgvector index to HNSW for fast search recall. Corpus is SFW throughout: `isAdult: false` filter never touched.
 - ~~Query-miss logging for targeted corpus growth~~ — done: `query_log` table flags likely corpus gaps per request; `ingest/review_misses.py` ranks recurring misses for triage. Next step once real traffic accumulates: ingest confirmed-missing titles from AniList by name.
 - ~~Weekly freshness check~~ — done: GitHub Actions cron re-ingests the most recently updated AniList entries every Monday, catching new releases and metadata drift without re-embedding unchanged chunks.
+- ~~Vector store migration (Supabase pgvector → Qdrant Cloud)~~ — done: see "Vector store migration" above. Fixes the recurring storage-quota ceiling permanently instead of deferring it past each corpus expansion.
 
 ## License
 
