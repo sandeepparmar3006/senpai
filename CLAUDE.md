@@ -21,25 +21,23 @@ This guide provides commands, code style rules, and structural findings for deve
 ## 🏗 Codebase & Routing Architecture
 
 SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a function-calling tool router (`openai/gpt-oss-20b`) supporting:
-1. `semantic_search`: Cosine similarity vectors search for plot/synopsis/character/terminology-based questions. Searches `media_chunks` where `source = 'anilist'`.
-2. `filter_lookup`: Structured SQL metadata filtering query for whole-corpus filters (genre, format, episode counts).
-3. `opinion_search`: Cosine similarity search over MAL/Jikan fan reviews for opinion/reception/recommendation questions. Searches `media_chunks` where `source = 'jikan_review'` via the same `match_media_chunks` RPC with `source_filter` set.
+1. `semantic_search`: Cosine similarity search (Qdrant) for plot/synopsis/character/terminology-based questions. Searches `media_chunks` collection where `source = 'anilist'`.
+2. `filter_lookup`: Qdrant payload-filtered query for whole-corpus filters (genre, format, episode counts), ordered by `metadata.popularity_rank`.
+3. `opinion_search`: Cosine similarity search over MAL/Jikan fan reviews for opinion/reception/recommendation questions. Same Qdrant collection, `source = 'jikan_review'`.
 
-Second text source (reviews) is ingested separately from the AniList pipeline: `ingest/fetch_anilist_reviews.py` -> `ingest/chunk_and_embed_reviews.py` -> `ingest/load_to_supabase.py` (via `ingest/run_ingest_reviews.py`), querying reviews from AniList's GraphQL API.
+Second text source (reviews) is ingested separately from the AniList pipeline: `ingest/fetch_anilist_reviews.py` -> `ingest/chunk_and_embed_reviews.py` -> `ingest/load_to_qdrant.py` (via `ingest/run_ingest_reviews.py`), querying reviews from AniList's GraphQL API.
 
-* **Backend**: Vercel Node.js Serverless function at [api/chat.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/chat.js).
+* **Backend**: Vercel Node.js Serverless function at [api/chat.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/chat.js), using [api/qdrantStore.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/qdrantStore.js) for all vector search/filter calls.
 * **Frontend**: Single page pure HTML/JS/CSS app served out of [public/](file:///Users/sandeepparmar/.claude/projects/senpai/public/).
-* **Database**: Supabase PostgreSQL with `pgvector` and rate limiting.
+* **Database**: Qdrant Cloud for vector search (`media_chunks` collection). Supabase PostgreSQL for rate limiting (`rate_limits`) and query-miss logging (`query_log`) only -- no vector data lives there anymore (migrated 2026-07-24, see README.md "Vector store migration").
 
 ---
 
 ## ⚠️ Important Findings & Gotchas
 
-* **Supabase free-tier storage quota exceeded (594MB/500MB, as of 2026-07-18), left as-is**: `media_chunks` (41,288 rows) accounts for essentially the entire DB size. Not bloat — dead tuples are 1.3%, and `information_schema.tables` shows no orphan tables. The HNSW index (`media_chunks_embedding_hnsw_idx`) is 319MB, ~54% of total: pgvector's HNSW stores a full copy of each 1024-dim vector inside the index itself for distance calc, separate from the table's TOASTed copy — so lowering `m` (rebuilt at `m=8` from default `m=16`) barely helps (320MB→319MB), since graph-edge pointers aren't the cost driver, raw vector storage is. If this needs fixing before the next corpus expansion: switching to IVFFlat drops the per-node graph structure (~130-140MB savings estimate, some recall tradeoff) is the least destructive lever; cutting corpus size or upgrading to Supabase Pro are the other two options. Site confirmed still functioning normally at this size (`semantic_search` tested live, real match scores returned) — no immediate functional break, just a ceiling that will bite again on the next `--pages` expansion.
-* **`match_media_chunks` needs manual redeploy on schema change**: no direct Postgres connection string in `.env` (only the REST service-role key), so `supabase/schema.sql` changes to this RPC (e.g. the `source_filter` param added for `opinion_search`) must be pasted into the Supabase SQL editor by hand — there's no CLI/migration path from this repo currently.
-* **RPC Signature Mismatch (resolved 2026-07-09, watch for regressions)**:
-  * There used to be two conflicting `filter_media` definitions in this repo: `supabase/schema.sql` (`returns (source_id text, title text, metadata jsonb)`) and a stale `supabase/filter_media.sql` (`returns (title text, metadata jsonb)`, no `source_id`, extra `limit_count` param). The stale file was deleted, but the *live* production DB had it applied at some point, which silently broke cover-art lookup on `filter_lookup` results (`api/chat.js` reads `r.source_id`, got `undefined`, client never fetched AniList cover art for those cards).
-  * `schema.sql`'s version is the only correct one now. If filter-route source cards ever show blank thumbnails again, re-run `filter_media` from `schema.sql` in the Supabase SQL editor — the DB function silently diverging from the repo is the likely cause, not a frontend bug.
+* **Vector store migrated Supabase pgvector → Qdrant Cloud (2026-07-24), resolves the storage-quota ceiling**: `media_chunks` used to account for the entire Supabase DB size (594MB/500MB free-tier quota, 119% at last measurement) — not bloat, but pgvector's HNSW index (319MB, ~54% of total) storing a full duplicate copy of every 1024-dim vector for distance calc, on top of the table's own copy. Tuning the index (`m` 16→8) barely helped (320MB→319MB), confirming raw vector storage was the cost driver, not graph structure. Fixed by moving `media_chunks` fully to Qdrant (`ingest/qdrant_store.py` Python, `api/qdrantStore.js` JS — both used by ingest scripts, `api/chat.js`, and `eval/eval.py`); `rate_limits`/`query_log` stayed on Supabase. `media_chunks` table + `match_media_chunks`/`filter_media` RPCs + HNSW index have been dropped from Supabase entirely (verified live, confirmed gone).
+* **Qdrant collection self-provisions, no manual setup needed**: `ensure_collection()` in `ingest/qdrant_store.py` creates the `media_chunks` collection (1024-dim, cosine distance) and its 6 payload indexes (`source`, `metadata.genres`, `metadata.format`, `metadata.episodes`, `metadata.anilist_id`, `metadata.popularity_rank`) on first run if they don't exist — no SQL-editor-paste step like the old Postgres RPCs needed.
+* **`popularity_rank` replaces Postgres's `id`-ordering for `filter_lookup`**: Qdrant's point IDs are deterministic UUIDs (`uuid5` of `source:source_id`) with no inherent order, unlike Postgres's bigserial `id`. `metadata.popularity_rank` is assigned per-chunk in `ingest/chunk_and_embed.py` (entry position × 1000, + a per-chunk-type offset so an entry's own main/cast/lore chunks always cluster together). Critically, `ingest/load_to_qdrant.py`'s `load()` preserves a point's *existing* `popularity_rank` on re-ingest rather than overwriting it — `run_freshness_check.py` fetches by recency (`UPDATED_AT_DESC`), not popularity, so blindly reassigning rank from that fetch order would corrupt ranking for exactly the most-actively-updated titles every weekly run.
 * **Rate Limits**:
   * Enforced in the database layer via atomic updates (`check_rate_limit` RPC).
   * Limits are set to 15 queries/minute per IP, and 1000 queries/day globally.
@@ -49,7 +47,7 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
   * To increase SenpAI's domain knowledge, continue expanding the anime corpus. Ingest more pages of popular anime (e.g. increase page count using `python ingest/run_ingest.py --pages 20` or higher to cover more anime series) and fetch corresponding AniList reviews using `python ingest/run_ingest_reviews.py`.
 * **Vector Embeddings**:
   * Generated using `intfloat/multilingual-e5-large-instruct` (1024-dim).
-  * Similarity searches use the `<=>` operator (cosine distance converted to similarity via `1 - distance`).
+  * Qdrant collection configured with `Distance.COSINE` — the returned `score` is already the cosine similarity directly (no `1 - distance` transform needed, unlike the old pgvector `<=>` operator). `MISS_SIMILARITY_THRESHOLD = 0.83` in `api/chat.js`/`eval.py` carried over unchanged post-migration; verified against the eval baseline before cutover, not just assumed to transfer.
 
 ---
 
