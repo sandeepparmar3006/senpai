@@ -24,8 +24,9 @@ from qdrant_client.models import (
 
 load_dotenv()
 
-QDRANT_URL = os.environ["QDRANT_URL"]
-QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+# .get() so the module imports without credentials (e.g. in CI); network calls still require them
+QDRANT_URL = os.environ.get("QDRANT_URL")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 COLLECTION = "media_chunks"
 VECTOR_SIZE = 1024
 
