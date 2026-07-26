@@ -1,0 +1,7 @@
+data/
+.agents/
+docs/
+tests/
+eval/
+ingest/
+.venv/
