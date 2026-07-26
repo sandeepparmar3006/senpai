@@ -136,8 +136,28 @@ async function embed(text) {
 // deeper chunks (description, lore) still make it into context.
 const NONPRIMARY_TITLE_CAP = 2;
 
+// A spin-off/OVA's chunk text is often narrower than the canonical entry's
+// (tighter description, less cast/plot breadth), which can out-score the
+// canonical entry on raw cosine similarity alone even though it's the wrong
+// answer. Among chunks within a small similarity margin of the top score,
+// prefer the most popular (lowest popularity_rank) as "primary" rather than
+// trusting pool[0] blindly -- pool is sorted by similarity desc.
+const PRIMARY_SIMILARITY_MARGIN = 0.02;
+
+function pickPrimaryTitle(pool) {
+  const topScore = pool[0]?.similarity ?? 0;
+  let best = pool[0];
+  for (const chunk of pool) {
+    if (chunk.similarity < topScore - PRIMARY_SIMILARITY_MARGIN) break;
+    const bestRank = best.metadata?.popularity_rank ?? Infinity;
+    const rank = chunk.metadata?.popularity_rank ?? Infinity;
+    if (rank < bestRank) best = chunk;
+  }
+  return best?.title;
+}
+
 function dedupeSiblingTitles(pool, k) {
-  const primaryTitle = pool[0]?.title;
+  const primaryTitle = pickPrimaryTitle(pool);
   const kept = [];
   let nonPrimaryCount = 0;
   for (const chunk of pool) {

@@ -130,9 +130,32 @@ def embed_query(text: str) -> list[float]:
 # deeper chunks (description, lore) still make it into context.
 NONPRIMARY_TITLE_CAP = 2
 
+# A spin-off/OVA's chunk text is often narrower than the canonical entry's
+# (tighter description, less cast/plot breadth), which can out-score the
+# canonical entry on raw cosine similarity alone even though it's the wrong
+# answer. Among chunks within a small similarity margin of the top score,
+# prefer the most popular (lowest popularity_rank) as "primary" rather than
+# trusting pool[0] blindly -- pool is sorted by similarity desc.
+PRIMARY_SIMILARITY_MARGIN = 0.02
+
+
+def _pick_primary_title(pool: list[dict]) -> str | None:
+    if not pool:
+        return None
+    top_score = pool[0].get("similarity", 0)
+    best = pool[0]
+    for chunk in pool:
+        if chunk.get("similarity", 0) < top_score - PRIMARY_SIMILARITY_MARGIN:
+            break
+        best_rank = (best.get("metadata") or {}).get("popularity_rank", float("inf"))
+        rank = (chunk.get("metadata") or {}).get("popularity_rank", float("inf"))
+        if rank < best_rank:
+            best = chunk
+    return best["title"]
+
 
 def _dedupe_sibling_titles(pool: list[dict], k: int) -> list[dict]:
-    primary_title = pool[0]["title"] if pool else None
+    primary_title = _pick_primary_title(pool)
     kept, nonprimary_count = [], 0
     for chunk in pool:
         if len(kept) >= k:

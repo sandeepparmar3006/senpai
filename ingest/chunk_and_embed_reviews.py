@@ -1,5 +1,6 @@
 """Turn raw AniList reviews into embedded chunks via Together AI (opinion-search source)."""
 import json
+import re
 from pathlib import Path
 
 import requests
@@ -7,18 +8,29 @@ from tqdm import tqdm
 
 from chunk_and_embed import embed_text
 
-MAX_CHARS = 1500
+MAX_CHARS = 1300  # e5-large-instruct hard-caps at 512 tokens; matches the empirically-safe char budget used for main chunks (chunk_and_embed.py)
 
 
-def truncate(text: str) -> str:
-    if len(text) <= MAX_CHARS:
+def strip_markup(text: str) -> str:
+    # some MAL reviews open with unbroken image embeds / raw HTML blocks (no whitespace to
+    # truncate on), which tokenize far denser than prose and blow past the token limit
+    # even under the char cap
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def truncate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
         return text
-    return text[:MAX_CHARS].rsplit(" ", 1)[0]
+    return text[:max_len].rsplit(" ", 1)[0]
 
 
 def build_chunk_text(r: dict) -> str:
     score = r.get("score")
-    return f"Review of {r['title']} (score: {score if score is not None else 'n/a'}/10):\n{truncate(r['review'])}"
+    header = f"Review of {r['title']} (score: {score if score is not None else 'n/a'}/10):\n"
+    max_body_len = max(250, MAX_CHARS - len(header))
+    return header + truncate(strip_markup(r["review"]), max_body_len)
 
 
 def process(raw_reviews: list[dict]) -> list[dict]:
