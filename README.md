@@ -41,6 +41,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | Expanded Database (1000 entries) + HNSW | 100% | 86% | 91% |
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% | 77% | 95% |
 | Post-Qdrant-migration verification (2026-07-24) | 100% | 86% | 100% |
+| Corpus doubled to 8000 entries + franchise-scoped dedup fix (2026-07-26) | 100% | 91% | 95% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -99,6 +100,7 @@ To make the knowledge base truly comprehensive, we expanded the ingestion pipeli
 | After sibling-title dedupe (`61e19bd`) + popularity ordering (`7b0a772`) | 98% (44/45) | 98% (44/45) | 96% (43/45) |
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% (45/45) | 100% (45/45) | 93% (42/45) |
 | Post-Qdrant-migration verification (2026-07-24) | 100% (45/45) | 100% (45/45) | 98% (44/45) |
+| Corpus doubled to 8000 entries + franchise-scoped dedup fix (2026-07-26) | 100% (45/45) | 98% (44/45) | 96% (43/45) |
 
 The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
 
@@ -107,6 +109,12 @@ As the corpus grew (README's "expanded database" work above added thousands more
 The broad-genre truncation misses called out in the previous run turned out to be fixable after all — the problem wasn't the 50-row cap itself but *which* 50 rows survived it. `filter_media` ordered alphabetically, so a query like "romance shows with at most 13 episodes" (691 matches in the live DB) only ever returned titles starting with A/B, and Horimiya, Kaguya-sama, and Toradora never made the cut. Reordering by `id` — which preserves the original AniList `POPULARITY_DESC` ingestion order — means truncation now discards the *least* popular matches instead of an alphabetical accident (`7b0a772`).
 
 The same run surfaced a second corpus-growth bug on the semantic route: franchises with many entries (Re:ZERO has S1/S2/S3/OVAs, each with near-identical header chunks) flooded the k=5 window with sibling-season metadata, crowding out the top title's own description and character-lore chunks. The answer to "who rescues Subaru?" was in the corpus verbatim but ranked #6. `semantic_search` now over-fetches k×4 candidates and caps non-primary-title chunks at 2 (`61e19bd`). Together the two fixes moved the holdout from 91% to 98% retrieval; the two remaining misses are one keyword-phrasing mismatch and one run-to-run routing sample, not a reproducible failure mode.
+
+### Corpus Expansion to 8000 + Franchise-Scoped Retrieval Fix (2026-07-26)
+
+Corpus doubled again (4000 → 8000 entries). Two enrichments landed alongside the scale-up: AniList's `staff` query now captures role (Director, Original Creator, etc.) via `edges` instead of a flat name list, and a new `recommendations` field feeds a "Similar: ..." line into the main chunk. `ingest/run_ingest.py` was restructured to embed and load each batch into Qdrant immediately with a progress checkpoint (mirroring `run_ingest_reviews.py`'s already-resumable pattern), so a crash mid-run only costs the in-flight batch instead of the whole corpus's paid embedding work. Reviews were re-ingested to cover the new entries; 28 initially failed on Together AI 400s because some reviews open with unbroken image-URL/HTML markup that tokenizes far denser than prose, blowing the 512-token limit despite being under the char cap — fixed by stripping markup before truncating, then backfilled to zero misses.
+
+The scale-up also caused a real, measurable retrieval regression: more franchise siblings (sequels, OVAs, movies, remakes) per query meant `dedupeSiblingTitles`'s assumption — that the single highest-cosine-similarity chunk (`pool[0]`) is always the canonical "primary" title — broke more often, since a spin-off's narrower chunk text can out-score the canonical entry's broader one. Regression eval dropped 86% → 68-73% retrieval. Fix: break ties on `popularity_rank` instead of trusting raw top-1 similarity. First attempt (pick the most popular chunk within a similarity margin of the top score) overcorrected — franchise clusters score so tightly that the margin swallowed the *entire* candidate pool, once promoting an unrelated show ("Dropkick on My Devil!") as primary for a Demon Slayer query just because it was globally more popular. Final fix restricts the tie-break to titles sharing an 8+ character normalized prefix with the top hit (same franchise only); both eval sets returned to pre-regression baseline (91%/98% retrieval on the 22q/45q sets respectively) despite the corpus doubling and the chunk format changing.
 
 ## Architecture
 
