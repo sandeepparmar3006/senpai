@@ -139,21 +139,37 @@ const NONPRIMARY_TITLE_CAP = 2;
 // A spin-off/OVA's chunk text is often narrower than the canonical entry's
 // (tighter description, less cast/plot breadth), which can out-score the
 // canonical entry on raw cosine similarity alone even though it's the wrong
-// answer. Among chunks within a small similarity margin of the top score,
-// prefer the most popular (lowest popularity_rank) as "primary" rather than
-// trusting pool[0] blindly -- pool is sorted by similarity desc.
-const PRIMARY_SIMILARITY_MARGIN = 0.02;
+// answer. Prefer the most popular (lowest popularity_rank) as "primary"
+// rather than trusting pool[0] blindly -- pool is sorted by similarity desc.
+// Restricted to titles that share a prefix with pool[0] (same franchise):
+// a same-similarity-band global scan once picked an unrelated but more
+// popular show (e.g. a Demon Slayer query promoting "Dropkick on My Devil!"
+// as primary just because it ranked more popular globally).
+function normalizeTitle(t) {
+  return (t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSameFranchise(a, b) {
+  const na = normalizeTitle(a);
+  const nb = normalizeTitle(b);
+  if (!na || !nb) return false;
+  const maxLen = Math.min(na.length, nb.length);
+  let shared = 0;
+  while (shared < maxLen && na[shared] === nb[shared]) shared++;
+  return shared >= Math.min(8, maxLen);
+}
 
 function pickPrimaryTitle(pool) {
-  const topScore = pool[0]?.similarity ?? 0;
+  if (!pool.length) return undefined;
+  const topTitle = pool[0].title;
   let best = pool[0];
   for (const chunk of pool) {
-    if (chunk.similarity < topScore - PRIMARY_SIMILARITY_MARGIN) break;
+    if (!isSameFranchise(chunk.title, topTitle)) continue;
     const bestRank = best.metadata?.popularity_rank ?? Infinity;
     const rank = chunk.metadata?.popularity_rank ?? Infinity;
     if (rank < bestRank) best = chunk;
   }
-  return best?.title;
+  return best.title;
 }
 
 function dedupeSiblingTitles(pool, k) {

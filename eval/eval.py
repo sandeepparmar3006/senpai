@@ -133,20 +133,35 @@ NONPRIMARY_TITLE_CAP = 2
 # A spin-off/OVA's chunk text is often narrower than the canonical entry's
 # (tighter description, less cast/plot breadth), which can out-score the
 # canonical entry on raw cosine similarity alone even though it's the wrong
-# answer. Among chunks within a small similarity margin of the top score,
-# prefer the most popular (lowest popularity_rank) as "primary" rather than
-# trusting pool[0] blindly -- pool is sorted by similarity desc.
-PRIMARY_SIMILARITY_MARGIN = 0.02
+# answer. Prefer the most popular (lowest popularity_rank) as "primary"
+# rather than trusting pool[0] blindly -- pool is sorted by similarity desc.
+# Restricted to titles that share a prefix with pool[0] (same franchise): a
+# same-similarity-band global scan once picked an unrelated but more popular
+# show (e.g. a Demon Slayer query promoting "Dropkick on My Devil!" as
+# primary just because it ranked more popular globally).
+def _normalize_title(t: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (t or "").lower())
+
+
+def _is_same_franchise(a: str, b: str) -> bool:
+    na, nb = _normalize_title(a), _normalize_title(b)
+    if not na or not nb:
+        return False
+    max_len = min(len(na), len(nb))
+    shared = 0
+    while shared < max_len and na[shared] == nb[shared]:
+        shared += 1
+    return shared >= min(8, max_len)
 
 
 def _pick_primary_title(pool: list[dict]) -> str | None:
     if not pool:
         return None
-    top_score = pool[0].get("similarity", 0)
+    top_title = pool[0]["title"]
     best = pool[0]
     for chunk in pool:
-        if chunk.get("similarity", 0) < top_score - PRIMARY_SIMILARITY_MARGIN:
-            break
+        if not _is_same_franchise(chunk["title"], top_title):
+            continue
         best_rank = (best.get("metadata") or {}).get("popularity_rank", float("inf"))
         rank = (chunk.get("metadata") or {}).get("popularity_rank", float("inf"))
         if rank < best_rank:
