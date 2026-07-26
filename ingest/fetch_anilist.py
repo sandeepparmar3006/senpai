@@ -36,8 +36,18 @@ query ($page: Int, $perPage: Int, $type: MediaType, $sort: [MediaSort]) {
         }
       }
       staff(sort: RELEVANCE, perPage: 10) {
+        edges {
+          role
+          node {
+            name { full }
+          }
+        }
+      }
+      recommendations(sort: RATING_DESC, perPage: 5) {
         nodes {
-          name { full }
+          mediaRecommendation {
+            title { romaji }
+          }
         }
       }
       characters(sort: ROLE, page: 1, perPage: 40) {

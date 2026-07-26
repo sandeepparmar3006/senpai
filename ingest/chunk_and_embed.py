@@ -72,7 +72,17 @@ def generate_chunks(entry: dict, entry_rank: int = 0) -> list[dict]:
     related_text = ", ".join(related_media)
     if len(related_text) > 300:
         related_text = related_text[:297] + "..."
-    
+
+    rec_titles = []
+    for r in (entry.get("recommendations", {}).get("nodes") or []):
+        media_rec = r.get("mediaRecommendation") or {}
+        rec_title = (media_rec.get("title") or {}).get("romaji", "")
+        if rec_title:
+            rec_titles.append(rec_title)
+    recommendations_text = ", ".join(rec_titles)
+    if len(recommendations_text) > 300:
+        recommendations_text = recommendations_text[:297] + "..."
+
     format_info = f"Format: {entry.get('format')}"
     if episodes:
         format_info += f", Episodes: {episodes}"
@@ -90,14 +100,19 @@ def generate_chunks(entry: dict, entry_rank: int = 0) -> list[dict]:
     )
     if related_text:
         main_header += f"Related: {related_text}\n"
+    if recommendations_text:
+        main_header += f"Similar: {recommendations_text}\n"
     if lore:
         main_header += f"Lore: {lore}\n"
     main_header += "\n"
     
-    # Keep total chars under ~1300
+    # Keep total chars under ~1300. max_desc_len floors at 250, so a bloated
+    # header (synonyms + related + recommendations all near their own caps at
+    # once) can still push the total over -- hard-cap the final text too, same
+    # safety net cast_text/lore chunks already have below.
     max_desc_len = max(250, 1300 - len(main_header))
     description = clean_html(entry.get("description"))[:max_desc_len]
-    main_text = main_header + description
+    main_text = (main_header + description)[:1300]
     
     chunks.append({
         "source_id": str(entry_id),
@@ -115,8 +130,12 @@ def generate_chunks(entry: dict, entry_rank: int = 0) -> list[dict]:
     })
     
     # CAST & STAFF CHUNK
-    staff_nodes = entry.get("staff", {}).get("nodes") or []
-    staff = ", ".join(s["name"]["full"] for s in staff_nodes if s.get("name", {}).get("full"))
+    staff_edges = entry.get("staff", {}).get("edges") or []
+    staff = ", ".join(
+        f"{e['role']}: {e['node']['name']['full']}"
+        for e in staff_edges
+        if e.get("role") and e.get("node", {}).get("name", {}).get("full")
+    )
     
     char_edges = entry.get("characters", {}).get("edges") or []
     char_list = []
@@ -194,13 +213,13 @@ def embed_text(text: str, retries: int = 6) -> list[float]:
             time.sleep(min(2**attempt, 20))
 
 
-def process(raw_entries: list[dict], cache: dict = None, cache_path: Path = None, checkpoint_every: int = 100) -> list[dict]:
+def process(raw_entries: list[dict], cache: dict = None, cache_path: Path = None, checkpoint_every: int = 100, rank_offset: int = 0) -> list[dict]:
     if cache is None:
         cache = {}
     embedded_chunks = []
     since_checkpoint = 0
-    for entry_rank, entry in enumerate(tqdm(raw_entries, desc="embedding")):
-        chunks_for_entry = generate_chunks(entry, entry_rank)
+    for i, entry in enumerate(tqdm(raw_entries, desc="embedding")):
+        chunks_for_entry = generate_chunks(entry, rank_offset + i)
 
         for chunk in chunks_for_entry:
             text = chunk["chunk_text"]
