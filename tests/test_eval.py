@@ -4,7 +4,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "eval"))
-from eval import LIVE_COUNT_FILTERS, build_context, keyword_hit, retrieval_hit  # noqa: E402
+from eval import LIVE_COUNT_FILTERS, build_context, check_gate, keyword_hit, retrieval_hit  # noqa: E402
+
+
+def test_check_gate():
+    assert check_gate({"route": 1.0, "retrieval": 0.95, "keyword": 0.95})
+    assert check_gate({"route": 0.90, "retrieval": 0.85, "keyword": 0.85})  # exact threshold
+    assert not check_gate({"route": 0.64, "retrieval": 0.95, "keyword": 0.95})  # 2026-08-05 incident
+    assert not check_gate({"route": 1.0, "retrieval": 0.80, "keyword": 0.95})
+    assert not check_gate({"route": 1.0, "retrieval": 0.95, "keyword": 0.80})
 
 
 def test_retrieval_hit():

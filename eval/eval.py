@@ -305,7 +305,18 @@ def _resolve_live_counts(qa_pairs: list[dict]) -> None:
         pair["expected_keywords"] = [str(cache[marker])]
 
 
-def run_eval(qa_pairs: list[dict]) -> None:
+# Gate thresholds only cover route/retrieval/keyword -- deliberately NOT
+# groundedness, which swung 86%->77% across two back-to-back runs of the
+# identical N=22 fixtures on 2026-08-14 (LLM-judge non-determinism, no
+# fixed seed). Gating CI on a metric with that much inherent noise would
+# fail PRs for no real reason. Thresholds sit below the current baseline
+# (100%/95%/95%) with margin for normal variance, but well above what a
+# real regression looks like -- the 2026-08-05 routing-model swap that
+# crashed route match 100%->64% would still fail this gate.
+REGRESSION_THRESHOLDS = {"route": 0.90, "retrieval": 0.85, "keyword": 0.85}
+
+
+def run_eval(qa_pairs: list[dict], gate: bool = False) -> bool:
     _resolve_live_counts(qa_pairs)
     route_matches, retrieval_hits, keyword_matches, groundedness_hits, total = 0, 0, 0, 0, 0
     for pair in qa_pairs:
@@ -359,16 +370,40 @@ def run_eval(qa_pairs: list[dict]) -> None:
 
     if total == 0:
         print("No filled-in questions in qa_pairs.json yet — nothing to eval.")
-        return
-    print(f"Route match rate: {route_matches}/{total} = {route_matches/total:.0%}")
-    print(f"Retrieval hit rate: {retrieval_hits}/{total} = {retrieval_hits/total:.0%}")
-    print(f"Answer keyword match rate: {keyword_matches}/{total} = {keyword_matches/total:.0%}")
+        return True
+    rates = {
+        "route": route_matches / total,
+        "retrieval": retrieval_hits / total,
+        "keyword": keyword_matches / total,
+    }
+    print(f"Route match rate: {route_matches}/{total} = {rates['route']:.0%}")
+    print(f"Retrieval hit rate: {retrieval_hits}/{total} = {rates['retrieval']:.0%}")
+    print(f"Answer keyword match rate: {keyword_matches}/{total} = {rates['keyword']:.0%}")
     print(f"Groundedness rate (LLM judge, no hallucination flagged): {groundedness_hits}/{total} = {groundedness_hits/total:.0%}")
+
+    if not gate:
+        return True
+    passed = check_gate(rates)
+    print("GATE: PASS" if passed else "GATE: FAIL")
+    return passed
+
+
+def check_gate(rates: dict[str, float]) -> bool:
+    passed = True
+    for name, min_rate in REGRESSION_THRESHOLDS.items():
+        if rates[name] < min_rate:
+            print(f"GATE FAIL: {name} rate {rates[name]:.0%} below required {min_rate:.0%}")
+            passed = False
+    return passed
 
 
 if __name__ == "__main__":
     import sys
 
-    qa_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "qa_pairs.json"
+    args = [a for a in sys.argv[1:] if a != "--gate"]
+    gate = "--gate" in sys.argv[1:]
+    qa_path = Path(args[0]) if args else Path(__file__).parent / "qa_pairs.json"
     qa_pairs = json.loads(qa_path.read_text())
-    run_eval(qa_pairs)
+    ok = run_eval(qa_pairs, gate=gate)
+    if gate and not ok:
+        sys.exit(1)

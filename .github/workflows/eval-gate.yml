@@ -1,0 +1,34 @@
+name: Eval regression gate
+
+# Only runs on PRs that touch retrieval/routing/eval code -- a docs or
+# ingest-script-only PR shouldn't burn Together AI + Qdrant API calls for
+# no reason. Path filter is at the trigger level (native GitHub Actions,
+# no third-party action needed) rather than a per-step conditional, so the
+# job simply doesn't start for irrelevant PRs.
+on:
+  pull_request:
+    paths:
+      - "api/**"
+      - "eval/**"
+      - "ingest/qdrant_store.py"
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      # N=22 regression set only, not the N=69 holdout -- this is a fast
+      # smoke-test gate, not the deep periodic check. Fails the PR if
+      # route/retrieval/keyword rates drop below eval.py's
+      # REGRESSION_THRESHOLDS. Groundedness is reported but not gated on
+      # (see the threshold comment in eval.py -- it's too noisy run-to-run
+      # to gate on without false-failing PRs).
+      - run: python eval/eval.py eval/qa_pairs.json --gate
+        env:
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
