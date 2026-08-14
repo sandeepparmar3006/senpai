@@ -185,7 +185,9 @@ def _dedupe_sibling_titles(pool: list[dict], k: int) -> list[dict]:
 
 def semantic_search(query: str, k: int = K, source_filter: str | None = None) -> list[dict]:
     embedding = embed_query(query)
-    pool = qdrant_search(get_qdrant_client(), embedding, k=k * 4, source_filter=source_filter)
+    pool = qdrant_search(
+        get_qdrant_client(), embedding, k=k * 4, source_filter=source_filter, query_text=query
+    )
     return _dedupe_sibling_titles(pool, k)
 
 

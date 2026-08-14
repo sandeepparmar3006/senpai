@@ -190,7 +190,7 @@ function dedupeSiblingTitles(pool, k) {
 
 async function semanticSearch(searchQuery, sourceFilter = null) {
   const embedding = await embed(searchQuery);
-  const pool = await qdrantSearch(getQdrantClient(), embedding, K * 4, sourceFilter);
+  const pool = await qdrantSearch(getQdrantClient(), embedding, K * 4, sourceFilter, searchQuery);
   return dedupeSiblingTitles(pool, K);
 }
 

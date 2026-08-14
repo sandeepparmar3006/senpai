@@ -5,7 +5,10 @@ semantics, point-ID scheme) lives in one place instead of drifting between
 callers -- mirrored on the JS side by api/qdrantStore.js.
 """
 import os
+import re
+import unicodedata
 import uuid
+from collections import Counter
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
@@ -15,10 +18,13 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    Modifier,
     OrderBy,
     PayloadSchemaType,
     PointStruct,
     Range,
+    SparseVector,
+    SparseVectorParams,
     VectorParams,
 )
 
@@ -29,6 +35,34 @@ QDRANT_URL = os.environ.get("QDRANT_URL")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 COLLECTION = "media_chunks"
 VECTOR_SIZE = 1024
+SPARSE_NAME = "sparse"
+# Reciprocal-rank-fusion constant (standard value from the RRF paper).
+RRF_K = 60
+
+# BMP-only on purpose: JS regexes are UTF-16 code units, so sticking to
+# \\u0080-\\uffff keeps the two implementations identical (astral chars split).
+_TOKEN_SPLIT = re.compile("[^a-z0-9\\u0080-\\uffff]+")
+
+
+def tokenize(text: str) -> list[str]:
+    # MUST stay byte-identical with tokenize() in api/qdrantStore.js -- ingest-time
+    # and query-time sparse vectors are computed in different languages.
+    text = unicodedata.normalize("NFKC", text).lower()
+    return [t for t in _TOKEN_SPLIT.split(text) if len(t) >= 2]
+
+
+def _fnv1a32(token: str) -> int:
+    h = 0x811C9DC5
+    for byte in token.encode("utf-8"):
+        h = ((h ^ byte) * 0x01000193) & 0xFFFFFFFF
+    return h
+
+
+def sparse_vector(text: str) -> SparseVector:
+    """Term-frequency sparse vector; IDF weighting is applied server-side (Modifier.IDF)."""
+    counts = Counter(_fnv1a32(t) for t in tokenize(text))
+    indices = sorted(counts)
+    return SparseVector(indices=indices, values=[float(counts[i]) for i in indices])
 
 # Fixed namespace for deterministic point IDs -- must never change, or every
 # existing point's ID shifts and re-ingest stops matching existing points.
@@ -55,12 +89,17 @@ def get_client() -> QdrantClient:
 def ensure_collection(client: QdrantClient | None = None) -> None:
     """Create the collection + payload indexes if missing. Safe to call repeatedly."""
     client = client or get_client()
+    sparse_config = {SPARSE_NAME: SparseVectorParams(modifier=Modifier.IDF)}
     if not client.collection_exists(COLLECTION):
         client.create_collection(
             collection_name=COLLECTION,
             vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+            sparse_vectors_config=sparse_config,
         )
-    existing = client.get_collection(COLLECTION).payload_schema
+    info = client.get_collection(COLLECTION)
+    if not info.config.params.sparse_vectors:
+        client.update_collection(collection_name=COLLECTION, sparse_vectors_config=sparse_config)
+    existing = info.payload_schema
     for field_name, schema in PAYLOAD_INDEXES.items():
         if field_name not in existing:
             client.create_payload_index(
@@ -75,7 +114,7 @@ def upsert(client: QdrantClient, chunks: list[dict], source: str) -> int:
     points = [
         PointStruct(
             id=point_id(source, c["source_id"]),
-            vector=c["embedding"],
+            vector={"": c["embedding"], SPARSE_NAME: sparse_vector(c["chunk_text"])},
             payload={
                 "source": source,
                 "source_id": c["source_id"],
@@ -90,31 +129,66 @@ def upsert(client: QdrantClient, chunks: list[dict], source: str) -> int:
     return len(points)
 
 
+def _hit_dict(h, similarity) -> dict:
+    return {
+        "id": h.id,
+        "source_id": h.payload["source_id"],
+        "title": h.payload["title"],
+        "chunk_text": h.payload["chunk_text"],
+        "metadata": h.payload["metadata"],
+        "similarity": similarity,
+    }
+
+
 def search(
-    client: QdrantClient, query_embedding: list[float], k: int = 5, source_filter: str | None = None
+    client: QdrantClient,
+    query_embedding: list[float],
+    k: int = 5,
+    source_filter: str | None = None,
+    query_text: str | None = None,
 ) -> list[dict]:
+    """Hybrid dense+sparse search, fused client-side with RRF.
+
+    Fusion happens client-side (not Qdrant's fusion query) so `similarity`
+    stays a real cosine score -- the miss-logging threshold and UI pills
+    depend on cosine semantics. Sparse-only hits get similarity None.
+    Without query_text, falls back to dense-only (pre-hybrid behaviour).
+    """
     query_filter = None
     if source_filter is not None:
         query_filter = Filter(
             must=[FieldCondition(key="source", match=MatchValue(value=source_filter))]
         )
-    hits = client.query_points(
+    dense = client.query_points(
         collection_name=COLLECTION,
         query=query_embedding,
         limit=k,
         query_filter=query_filter,
     ).points
-    return [
-        {
-            "id": h.id,
-            "source_id": h.payload["source_id"],
-            "title": h.payload["title"],
-            "chunk_text": h.payload["chunk_text"],
-            "metadata": h.payload["metadata"],
-            "similarity": h.score,
-        }
-        for h in hits
-    ]
+
+    sparse = []
+    if query_text is not None:
+        sv = sparse_vector(query_text)
+        if sv.indices:
+            sparse = client.query_points(
+                collection_name=COLLECTION,
+                query=sv,
+                using=SPARSE_NAME,
+                limit=k,
+                query_filter=query_filter,
+            ).points
+    if not sparse:
+        return [_hit_dict(h, h.score) for h in dense]
+
+    fused: dict = {}
+    for hits, is_dense in ((dense, True), (sparse, False)):
+        for rank, h in enumerate(hits):
+            entry = fused.setdefault(str(h.id), {"hit": h, "rrf": 0.0, "cosine": None})
+            entry["rrf"] += 1.0 / (RRF_K + rank + 1)
+            if is_dense:
+                entry["cosine"] = h.score
+    ordered = sorted(fused.values(), key=lambda e: e["rrf"], reverse=True)[:k]
+    return [_hit_dict(e["hit"], e["cosine"]) for e in ordered]
 
 
 def filter_query(
