@@ -233,6 +233,33 @@ def generate_answer(question: str, route_name: str, results: list[dict]) -> str:
     return data["choices"][0]["message"]["content"]
 
 
+GROUNDEDNESS_JUDGE_PROMPT = (
+    "You are a strict fact-checker for a RAG system. You will be given the CONTEXT that was "
+    "retrieved for a question and the ANSWER the system generated from it. Decide whether every "
+    "factual claim in the ANSWER is directly supported by the CONTEXT -- not by outside "
+    "knowledge, not by a plausible-sounding inference. A refusal or 'no matching anime found' "
+    "answer is always grounded. Respond with exactly one word: GROUNDED or HALLUCINATED."
+)
+
+
+def groundedness_hit(question: str, answer: str, context: str) -> bool:
+    # Judge call is skipped when there's no retrieved context (results=[]) --
+    # generate_answer already special-cases that to a fixed non-hallucinating
+    # string, so there's nothing to fact-check.
+    if not context:
+        return True
+    data = _chat_completion(
+        {
+            "messages": [
+                {"role": "system", "content": GROUNDEDNESS_JUDGE_PROMPT},
+                {"role": "user", "content": f"CONTEXT:\n{context}\n\nQuestion: {question}\n\nANSWER: {answer}"},
+            ]
+        }
+    )
+    verdict = data["choices"][0]["message"]["content"].strip().upper()
+    return "HALLUCINAT" not in verdict
+
+
 def retrieval_hit(pair: dict, retrieved_titles: set[str]) -> bool:
     retrieved_lower = {t.lower() for t in retrieved_titles}
     if pair.get("expected_title"):
@@ -254,8 +281,33 @@ def keyword_hit(pair: dict, answer: str) -> bool:
     return any(_norm(kw) in normalized for kw in pair.get("expected_keywords", []))
 
 
+# Whole-corpus count fixtures (movie count, >200-episode count) go stale every
+# time the corpus grows via ingest or the weekly freshness cron -- drifted
+# twice already (308->552 movies, 11->13 long-running shows). Rather than
+# hardcode a number that silently rots, pairs carry a "live_count" marker and
+# get their expected_keywords computed here, fresh, against the live corpus.
+LIVE_COUNT_FILTERS = {
+    "movies": {"format": "MOVIE"},
+    "episodes_over_200": {"min_episodes": 201},
+}
+
+
+def _resolve_live_counts(qa_pairs: list[dict]) -> None:
+    cache: dict[str, int] = {}
+    for pair in qa_pairs:
+        marker = pair.get("live_count")
+        if not marker:
+            continue
+        if marker not in cache:
+            filters = LIVE_COUNT_FILTERS[marker]
+            _, total = qdrant_filter_query(get_qdrant_client(), **filters)
+            cache[marker] = total
+        pair["expected_keywords"] = [str(cache[marker])]
+
+
 def run_eval(qa_pairs: list[dict]) -> None:
-    route_matches, retrieval_hits, keyword_matches, total = 0, 0, 0, 0
+    _resolve_live_counts(qa_pairs)
+    route_matches, retrieval_hits, keyword_matches, groundedness_hits, total = 0, 0, 0, 0, 0
     for pair in qa_pairs:
         if not pair.get("question"):
             continue
@@ -288,6 +340,11 @@ def run_eval(qa_pairs: list[dict]) -> None:
         if khit:
             keyword_matches += 1
 
+        context = build_context(route_name, results) if results else ""
+        ghit = groundedness_hit(pair["question"], answer, context)
+        if ghit:
+            groundedness_hits += 1
+
         flags = []
         if route_name != expected_route:
             flags.append(f"ROUTE expected={expected_route}")
@@ -295,6 +352,8 @@ def run_eval(qa_pairs: list[dict]) -> None:
             flags.append(f"RETRIEVAL expected={pair.get('expected_title') or pair.get('expected_titles_any')} got={retrieved_titles}")
         if not khit:
             flags.append(f"KEYWORD expected_any={pair.get('expected_keywords')}")
+        if not ghit:
+            flags.append("HALLUCINATION flagged by judge")
         tag = "FAIL: " + "; ".join(flags) if flags else "PASS"
         print(f"[{tag}] Q: {pair['question']}\n[{route_name}] A: {answer}\n")
 
@@ -304,6 +363,7 @@ def run_eval(qa_pairs: list[dict]) -> None:
     print(f"Route match rate: {route_matches}/{total} = {route_matches/total:.0%}")
     print(f"Retrieval hit rate: {retrieval_hits}/{total} = {retrieval_hits/total:.0%}")
     print(f"Answer keyword match rate: {keyword_matches}/{total} = {keyword_matches/total:.0%}")
+    print(f"Groundedness rate (LLM judge, no hallucination flagged): {groundedness_hits}/{total} = {groundedness_hits/total:.0%}")
 
 
 if __name__ == "__main__":
