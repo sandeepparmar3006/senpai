@@ -1,6 +1,7 @@
 # SenpAI
 
 [![CI](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml/badge.svg)](https://github.com/sandeepparmar3006/senpai/actions/workflows/ci.yml)
+[![Eval regression gate](https://github.com/sandeepparmar3006/senpai/actions/workflows/eval-gate.yml/badge.svg)](https://github.com/sandeepparmar3006/senpai/actions/workflows/eval-gate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 RAG assistant over anime/manga metadata with a **function-calling tool router** — every answer streams token-by-token, is grounded in retrieved sources shown as cards with real cover art, and ships a collapsible panel showing exactly which retrieval path it took and why.
@@ -42,6 +43,7 @@ One production detail worth knowing: open-weight models sometimes emit a halluci
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% | 77% | 95% |
 | Post-Qdrant-migration verification (2026-07-24) | 100% | 86% | 100% |
 | Corpus doubled to 8000 entries + franchise-scoped dedup fix (2026-07-26) | 100% | 91% | 95% |
+| Hybrid dense+sparse retrieval, RRF fusion (2026-08-14) | 100% | 95% | 95% |
 
 Adding the router improved real correctness (structured questions get accurate whole-corpus answers instead of top-5 guesses) but introduced routing error as a new, measurable failure surface. The eval caught two reproducible failure modes:
 
@@ -101,6 +103,10 @@ To make the knowledge base truly comprehensive, we expanded the ingestion pipeli
 | Corpus doubled to 4000 entries (2000 anime + 2000 manga) | 100% (45/45) | 100% (45/45) | 93% (42/45) |
 | Post-Qdrant-migration verification (2026-07-24) | 100% (45/45) | 100% (45/45) | 98% (44/45) |
 | Corpus doubled to 8000 entries + franchise-scoped dedup fix (2026-07-26) | 100% (45/45) | 98% (44/45) | 96% (43/45) |
+| Hybrid dense+sparse retrieval, RRF fusion (2026-08-14) | 100% (45/45) | 98% (44/45) | 96% (43/45) |
+| Grown to 69 questions (+`opinion_search`, +multi-constraint filters, +comparative; 2026-08-14) | 100% (69/69) | 97% (67/69) | 97% (67/69) |
+
+The last row isn't a corpus or retrieval change — it's the same corpus and code as the row above, just 24 more questions covering ground the set never tested before. The two new misses are a pre-existing sibling-title ambiguity (JoJo's Bizarre Adventure) and a genuine new finding: see "Eval hardening" below.
 
 The 100% route match on unseen phrasing is the evidence the earlier disambiguation fix generalizes. The first run also surfaced two new argument-extraction bugs, both in `filter_lookup`: the model passed lowercase genres ("sports") against a case-sensitive jsonb match, and the format description omitted `TV_SHORT` so the model couldn't express it. Fixed the same way as before — `enum` constraints on both params — and verified against the live RPC.
 
@@ -116,6 +122,32 @@ Corpus doubled again (4000 → 8000 entries). Two enrichments landed alongside t
 
 The scale-up also caused a real, measurable retrieval regression: more franchise siblings (sequels, OVAs, movies, remakes) per query meant `dedupeSiblingTitles`'s assumption — that the single highest-cosine-similarity chunk (`pool[0]`) is always the canonical "primary" title — broke more often, since a spin-off's narrower chunk text can out-score the canonical entry's broader one. Regression eval dropped 86% → 68-73% retrieval. Fix: break ties on `popularity_rank` instead of trusting raw top-1 similarity. First attempt (pick the most popular chunk within a similarity margin of the top score) overcorrected — franchise clusters score so tightly that the margin swallowed the *entire* candidate pool, once promoting an unrelated show ("Dropkick on My Devil!") as primary for a Demon Slayer query just because it was globally more popular. Final fix restricts the tie-break to titles sharing an 8+ character normalized prefix with the top hit (same franchise only); both eval sets returned to pre-regression baseline (91%/98% retrieval on the 22q/45q sets respectively) despite the corpus doubling and the chunk format changing.
 
+### Hybrid Dense+Sparse Retrieval (2026-08-14)
+
+Pure cosine similarity search has a real ceiling: two documented misses couldn't be tuned away with the existing dense-only setup. "Is The Promised Neverland classified as horror?" lost to more strongly horror-tagged titles (Junji Ito adaptations) that out-scored it on raw embedding similarity, and ONE PIECE's canonical entry sometimes didn't even appear in the top-20 candidate pool for character questions — a retrieval-*depth* problem, not a ranking one.
+
+Fixed by adding a named `sparse` BM25-style vector to the Qdrant collection alongside the existing 1024-dim dense vector, fused with client-side Reciprocal Rank Fusion at query time. Sparse vectors are computed with a shared FNV-1a-hashed tokenizer implemented twice — once in `ingest/qdrant_store.py`, once in `api/qdrantStore.js` — and verified byte-identical across both languages via a real cross-language parity test (`tests/test_sparse.py` / `tests/test_sparse.mjs`), not assumed to match. Fusion happens client-side rather than via Qdrant's built-in fusion query specifically so `similarity` in results stays a real cosine score — the existing `MISS_SIMILARITY_THRESHOLD = 0.83` used for query-miss logging, and the UI's similarity-score pills, both depend on that semantic.
+
+Migrating the live collection required a full rebuild: Qdrant has no supported way to add a new named vector to an existing collection. `ingest/backfill_sparse.py` dumps every point (dense vector + payload) to disk first, recreates the collection with both vector configs, then re-upserts from the dump with sparse vectors computed locally — zero additional embedding-API cost, since the dense vectors come straight from the dump. The live migration hit Qdrant write timeouts twice under sustained bulk-write load (a free-tier cluster throughput limit, not a data-loss risk — the on-disk dump meant nothing was ever actually lost), fixed with retry/backoff on the upsert call before the migration completed cleanly.
+
+Both target misses are fixed and confirmed live: the Promised Neverland query now returns Promised Neverland itself as the top hits with the correct Horror genre tag, and the ONE PIECE query now returns the canonical entry as the top-similarity result.
+
+### Eval Hardening: Groundedness Scoring, Coverage Gaps, and a CI Gate (2026-08-14)
+
+Three separate additions, done together as one pass over the eval harness:
+
+**Killed a recurring fixture-drift bug.** Two holdout questions (movie count, count of entries with >200 episodes) carry hardcoded expected numbers that had already silently gone stale twice as the corpus grew (308→552 movies, 11→13 long-running shows — both caught and manually re-patched before). Rather than patch a third time, `eval/eval.py` now computes these live from Qdrant at eval start (`_resolve_live_counts`) instead of hardcoding — fixtures carry a `"live_count"` marker, not a number. Confirmed the drift was still live and current before shipping: the real count came back 599 movies, not the 552 still in the file pre-fix.
+
+**Closed a real zero-coverage gap.** `opinion_search` — the third router tool, live since 2026-07-09 — had never been eval-tested by either question set. Added 15 questions, each title individually verified against the live `jikan_review` corpus before being written into the fixture file, not guessed. Also added verified multi-constraint filter questions and three comparative two-title questions ("does X have fewer episodes than Y"), which surfaced a genuine, previously-undocumented architectural gap: comparative questions route to `semantic_search`, which embeds one combined query and can retrieve chunks for only one of the two named titles, missing the other entirely. That's a routing-architecture gap, not a retrieval-tuning one — documented as a known limitation below, not chased. True negation questions ("anime that are NOT Romance") were deliberately left out of scope after confirming `filter_lookup`'s schema has no exclusion operator and the router currently either substitutes a wrong single category or silently drops the constraint — no correct ground truth exists to test against without first building negation support.
+
+**Added LLM-judge groundedness scoring.** A fourth eval metric, `groundedness_hit`, checks whether an answer's claims are actually supported by the retrieved context — catching a class of bug keyword matching can't, where a correct-sounding answer came from the model's own pretrained knowledge rather than what was actually retrieved. Calibrated against synthetic grounded/hallucinated cases before trusting it, then a real flagged case was manually verified against the actual retrieved context: a Death Note question was correctly flagged HALLUCINATED because the model answered "Ryuk" — true, and well-known — from general knowledge, while the specific chunk retrieved was about a different character having his own Death Note stolen by Ryuk, not a statement that Ryuk dropped his own note into the human world. First measurement (expect several points of run-to-run judge noise, since there's no fixed temperature/seed on the judge call — confirmed this isn't a real accuracy swing by re-running the identical N=22 fixtures twice and seeing route/retrieval/keyword hold exactly steady while only groundedness moved): regression 86%→77% across two runs, holdout 80%.
+
+**Added a CI regression gate.** `.github/workflows/eval-gate.yml` runs the N=22 regression set on any PR touching `api/`, `eval/`, or `ingest/qdrant_store.py` (path-filtered at the trigger level, so unrelated PRs don't burn API calls) and fails the PR if route/retrieval/keyword drop below 90%/85%/85% — thresholds with margin below the current baseline, but the 2026-08-05 incident where a routing-model swap crashed route match to 64% would still fail this gate. Groundedness is reported in the job log but deliberately not gated on, given the run-to-run noise above. Verified with a real throwaway PR, watched live in GitHub Actions to a green pass, not just assumed working from the YAML.
+
+**Known limitations, documented rather than silently worked around:**
+- Comparative two-title questions can miss one of the two named titles in retrieval (see above) — would need a dedicated compare-titles code path, not a retrieval fix.
+- `filter_lookup` has no negation/exclusion operator — "anime that are NOT X" either substitutes a single wrong category or silently ignores the constraint.
+
 ## Architecture
 
 ```
@@ -130,9 +162,9 @@ AniList GraphQL (isAdult: false filtered at fetch time)        AniList GraphQL (
    api/chat.js (Vercel function)
         | check_rate_limit() RPC (Supabase) -> per-IP (15/min) + global (1000/day) cap, fail-open
         | route(query) -> Together chat completion w/ tools (openai/gpt-oss-20b), tool_choice: required
-        |   |-- semantic_search  -> embed query -> Qdrant search (source: anilist, cosine similarity)
+        |   |-- semantic_search  -> embed query -> Qdrant hybrid search (dense cosine + sparse BM25, RRF-fused, source: anilist)
         |   |-- filter_lookup    -> Qdrant payload-filtered query, ordered by popularity_rank
-        |   |-- opinion_search   -> embed query -> Qdrant search (source: jikan_review)
+        |   |-- opinion_search   -> embed query -> Qdrant hybrid search (dense + sparse, RRF-fused, source: jikan_review)
         | streamGenerate(question, route_results) -> Together chat completion, stream: true
         |   -> answer piped to the client as SSE tokens as they're generated
    public/ (chat UI: renders tokens live, shows route + retrieval detail per answer)
@@ -176,6 +208,11 @@ Fixed by migrating the vector store to Qdrant Cloud, a purpose-built vector data
 - ~~Query-miss logging for targeted corpus growth~~ — done: `query_log` table flags likely corpus gaps per request; `ingest/review_misses.py` ranks recurring misses for triage. Next step once real traffic accumulates: ingest confirmed-missing titles from AniList by name.
 - ~~Weekly freshness check~~ — done: GitHub Actions cron re-ingests the most recently updated AniList entries every Monday, catching new releases and metadata drift without re-embedding unchanged chunks.
 - ~~Vector store migration (Supabase pgvector → Qdrant Cloud)~~ — done: see "Vector store migration" above. Fixes the recurring storage-quota ceiling permanently instead of deferring it past each corpus expansion.
+- ~~Hybrid dense+sparse retrieval~~ — done, see "Hybrid Dense+Sparse Retrieval" above. Fixes two previously-undocumented dense-only retrieval misses.
+- ~~Eval groundedness/hallucination scoring~~ — done, see "Eval Hardening" above. A fourth metric alongside route/retrieval/keyword, distinguishing correct-and-grounded answers from correct-but-not-actually-supported-by-context ones.
+- ~~CI regression gate~~ — done: `.github/workflows/eval-gate.yml` fails PRs touching retrieval/routing code if accuracy regresses, verified live against a real test PR.
+- Cross-encoder reranker — not currently planned. The one gap found during the eval-hardening pass (comparative two-title questions) is a routing-architecture problem a reranker wouldn't fix, and nothing else has surfaced to justify the added latency/cost.
+- Ingest confirmed-missing titles from `query_log` misses — still traffic-gated, unchanged since it was first noted; nothing to build until real misses accumulate.
 
 ## License
 
