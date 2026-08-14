@@ -407,3 +407,4 @@ if __name__ == "__main__":
     ok = run_eval(qa_pairs, gate=gate)
     if gate and not ok:
         sys.exit(1)
+# CI eval gate verification touch, 2026-08-14
