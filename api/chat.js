@@ -211,6 +211,18 @@ async function semanticSearch(searchQuery, sourceFilter = null) {
   return dedupeSiblingTitles(pool, K);
 }
 
+// resolveTitleFacts needs the ONE exact-titled entry, not a diversified top-K --
+// dedupeSiblingTitles' franchise cap can drop it, and K*4=20 isn't always enough
+// pool for a short/generic bare title (e.g. "Bleach") to rank inside the top-K
+// fused hits at all, even though the exact entry exists in the corpus. Widen the
+// pool substantially and skip dedup; titlesMatch below is the real filter.
+const TITLE_LOOKUP_POOL = 50;
+
+async function titleLookupPool(requested) {
+  const embedding = await embed(requested);
+  return qdrantSearch(getQdrantClient(), embedding, TITLE_LOOKUP_POOL, null, requested);
+}
+
 // A bare title-only query's top hit isn't reliably the entry's own main chunk
 // (which is where episodes/format metadata live -- see chunk_and_embed.py),
 // and for short/generic titles isn't always even the right entry at all.
@@ -229,7 +241,7 @@ function titlesMatch(requested, hitTitle) {
 }
 
 async function resolveTitleFacts(requested) {
-  const hits = await semanticSearch(requested);
+  const hits = await titleLookupPool(requested);
   // An anime and its manga counterpart can share the exact same title string;
   // "episodes" only applies to the anime one, so prefer it among matches
   // instead of trusting whichever ranked first.

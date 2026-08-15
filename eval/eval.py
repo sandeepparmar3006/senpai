@@ -208,6 +208,22 @@ def semantic_search(query: str, k: int = K, source_filter: str | None = None) ->
     return _dedupe_sibling_titles(pool, k)
 
 
+# _resolve_title_facts needs the ONE exact-titled entry, not a diversified top-K --
+# _dedupe_sibling_titles' franchise cap can drop it, and k*4=20 isn't always enough
+# pool for a short/generic bare title (e.g. "Bleach") to rank inside the top-K
+# fused hits at all, even though the exact entry exists in the corpus. Widen the
+# pool substantially and skip dedup; _titles_match below is the real filter.
+# Mirrors titleLookupPool in api/chat.js.
+TITLE_LOOKUP_POOL = 50
+
+
+def _title_lookup_pool(requested: str) -> list[dict]:
+    embedding = embed_query(requested)
+    return qdrant_search(
+        get_qdrant_client(), embedding, k=TITLE_LOOKUP_POOL, source_filter=None, query_text=requested
+    )
+
+
 # Mirrors compareTitles/resolveTitleFacts/titlesMatch in api/chat.js: validate
 # the top hit's title before trusting it, then re-fetch that entry's main
 # chunk by anilist_id for the authoritative episode count (a bare title-only
@@ -222,7 +238,7 @@ def _titles_match(requested: str, hit_title: str) -> bool:
 
 
 def _resolve_title_facts(requested: str) -> dict:
-    hits = semantic_search(requested)
+    hits = _title_lookup_pool(requested)
     # An anime and its manga counterpart can share the exact same title
     # string; "episodes" only applies to the anime one, so prefer it among
     # matches instead of trusting whichever ranked first.
