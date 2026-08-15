@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Readable } from "node:stream";
-import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qdrantFilterQuery } from "./qdrantStore.js";
+import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qdrantFilterQuery, getMainChunk as qdrantGetMainChunk } from "./qdrantStore.js";
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
@@ -83,6 +83,22 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "compare_titles",
+      description:
+        "Compare the episode counts of two specific named anime/manga (e.g. 'does X have fewer episodes than Y', 'which has more episodes, X or Y'). Use ONLY when exactly two titles are named and the comparison is about episode count.",
+      parameters: {
+        type: "object",
+        properties: {
+          title_a: { type: "string", description: "First anime title" },
+          title_b: { type: "string", description: "Second anime title" },
+        },
+        required: ["title_a", "title_b"],
+      },
+    },
+  },
 ];
 
 async function chatCompletion(body) {
@@ -105,6 +121,7 @@ async function route(question) {
         content:
           "Decide how to answer the user's anime/manga question by calling exactly one tool. " +
           "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. " +
+          "Next, if the question names exactly two anime titles and asks to compare their episode counts (e.g. 'does X have more episodes than Y', 'which has more episodes, X or Y'), choose compare_titles. " +
           "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. " +
           "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format.",
       },
@@ -194,6 +211,43 @@ async function semanticSearch(searchQuery, sourceFilter = null) {
   return dedupeSiblingTitles(pool, K);
 }
 
+// A bare title-only query's top hit isn't reliably the entry's own main chunk
+// (which is where episodes/format metadata live -- see chunk_and_embed.py),
+// and for short/generic titles isn't always even the right entry at all.
+// So: validate the top hit's title actually matches what was asked (reusing
+// the same franchise-substring check as pickPrimaryTitle) before trusting it,
+// then re-fetch that entry's main chunk by anilist_id for the authoritative
+// episode count instead of whatever chunk type happened to rank #1.
+// Exact match, not substring: "Bleach" is a substring of e.g. "BLEACH:
+// Thousand-Year Blood War - The Conflict" (a single 14-episode cour), which
+// would silently answer the flagship show's question with the wrong cour's
+// count. Failing closed (notFound) beats a plausible-looking wrong number.
+function titlesMatch(requested, hitTitle) {
+  const nr = normalizeTitle(requested);
+  const nh = normalizeTitle(hitTitle);
+  return !!nr && nr === nh;
+}
+
+async function resolveTitleFacts(requested) {
+  const hits = await semanticSearch(requested);
+  // An anime and its manga counterpart can share the exact same title string;
+  // "episodes" only applies to the anime one, so prefer it among matches
+  // instead of trusting whichever ranked first.
+  const matches = hits.filter((h) => titlesMatch(requested, h.title));
+  const hit = matches.find((h) => h.metadata?.type !== "MANGA") ?? matches[0];
+  if (!hit) {
+    return { requestedTitle: requested, notFound: true };
+  }
+  const anilistId = hit.metadata?.anilist_id;
+  const main = anilistId != null ? await qdrantGetMainChunk(getQdrantClient(), anilistId) : null;
+  const source = main ?? hit;
+  return { requestedTitle: requested, title: source.title, metadata: source.metadata, similarity: hit.similarity };
+}
+
+async function compareTitles(titleA, titleB) {
+  return Promise.all([resolveTitleFacts(titleA), resolveTitleFacts(titleB)]);
+}
+
 async function filterLookup(args) {
   const data = await qdrantFilterQuery(getQdrantClient(), {
     genre: args.genre ?? null,
@@ -227,6 +281,9 @@ async function logQuery(question, routeName, results) {
   if (routeName === "filter_lookup") {
     resultCount = results[0]?.total_count ?? results.length;
     isMiss = resultCount === 0;
+  } else if (routeName === "compare_titles") {
+    resultCount = results.filter((r) => !r.notFound).length;
+    isMiss = results.some((r) => r.notFound || (r.similarity !== null && r.similarity < MISS_SIMILARITY_THRESHOLD));
   } else {
     similarity = results[0]?.similarity ?? null;
     isMiss = similarity !== null && similarity < MISS_SIMILARITY_THRESHOLD;
@@ -241,6 +298,11 @@ async function logQuery(question, routeName, results) {
 }
 
 function buildContext(routeName, results) {
+  if (routeName === "compare_titles") {
+    return results
+      .map((r) => (r.notFound ? `[${r.requestedTitle}] Not found in database.` : `[${r.title}] episodes: ${r.metadata?.episodes ?? "unknown"}, format: ${r.metadata?.format ?? "unknown"}`))
+      .join("\n");
+  }
   if (routeName === "filter_lookup") {
     const total = results[0]?.total_count ?? results.length;
     const header = `Total matching entries in the database: ${total}. Showing ${results.length} below (use the total above for any "how many" question, not a count of the list shown).`;
@@ -332,12 +394,21 @@ export default async function handler(req, res) {
   try {
     toolCall = await route(query);
     const calledName = toolCall?.function?.name;
-    routeName = calledName === "filter_lookup" || calledName === "opinion_search" ? calledName : "semantic_search";
+    routeName = ["filter_lookup", "opinion_search", "compare_titles"].includes(calledName) ? calledName : "semantic_search";
     routeArgs = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
     if (routeName === "filter_lookup") {
       results = await filterLookup(routeArgs);
     } else if (routeName === "opinion_search") {
       results = await semanticSearch(routeArgs.query || query, "jikan_review");
+    } else if (routeName === "compare_titles") {
+      if (routeArgs.title_a && routeArgs.title_b) {
+        results = await compareTitles(routeArgs.title_a, routeArgs.title_b);
+      } else {
+        // Router failed to extract two distinct titles -- fall back to the old
+        // (buggy but non-crashing) path rather than error out.
+        routeName = "semantic_search";
+        results = await semanticSearch(query);
+      }
     } else {
       results = await semanticSearch(routeArgs.query || query);
     }
@@ -357,7 +428,9 @@ export default async function handler(req, res) {
   const detail =
     routeName === "filter_lookup"
       ? { genre: routeArgs.genre ?? null, min_episodes: routeArgs.min_episodes ?? null, max_episodes: routeArgs.max_episodes ?? null, format: routeArgs.format ?? null }
-      : { searchQuery: routeArgs.query || query };
+      : routeName === "compare_titles"
+        ? { titleA: routeArgs.title_a ?? null, titleB: routeArgs.title_b ?? null }
+        : { searchQuery: routeArgs.query || query };
 
   if (results.length === 0) {
     res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources: [] })}\n\n`);
@@ -370,6 +443,11 @@ export default async function handler(req, res) {
   const sources = results.map((r) => {
     if (routeName === "filter_lookup") {
       return { title: r.title, source_id: r.metadata?.anilist_id ?? r.source_id, episodes: r.metadata?.episodes ?? null, format: r.metadata?.format ?? null };
+    }
+    if (routeName === "compare_titles") {
+      return r.notFound
+        ? { title: r.requestedTitle, source_id: null, notFound: true }
+        : { title: r.title, source_id: r.metadata?.anilist_id ?? r.source_id, similarity: r.similarity, episodes: r.metadata?.episodes ?? null };
     }
     if (routeName === "opinion_search") {
       // source_id is a review id (mal-review composite); anilist_id in metadata is what the

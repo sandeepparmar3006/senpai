@@ -68,7 +68,7 @@
   {"question": "Which Fantasy movies are in the database?", "expected_route": "filter_lookup", "expected_titles_any": ["Spirited Away", "Demon Slayer -Kimetsu no Yaiba- The Movie: Mugen Train"], "expected_keywords": ["Spirited Away", "Mugen Train"]},
   {"question": "List Slice of Life shows with at least 20 episodes.", "expected_route": "filter_lookup", "expected_titles_any": ["Your lie in April", "Toradora!"], "expected_keywords": ["lie in April", "Toradora"]},
 
-  {"question": "Does Naruto: Shippuden have more episodes than Bleach?", "expected_route": "semantic_search", "expected_titles_any": ["Naruto: Shippuden", "Bleach"], "expected_keywords": ["Naruto", "Bleach"]},
-  {"question": "Which has more episodes, One Piece or Naruto: Shippuden?", "expected_route": "semantic_search", "expected_titles_any": ["One Piece", "Naruto: Shippuden"], "expected_keywords": ["One Piece", "Naruto"]},
-  {"question": "Does Bleach have fewer episodes than One Piece?", "expected_route": "semantic_search", "expected_titles_any": ["Bleach", "One Piece"], "expected_keywords": ["Bleach", "One Piece"]}
+  {"question": "Does Naruto: Shippuden have more episodes than Bleach?", "expected_route": "compare_titles", "expected_titles_any": ["Naruto: Shippuden", "Bleach"], "expected_keywords": ["Naruto", "Bleach"]},
+  {"question": "Which has more episodes, One Piece or Naruto: Shippuden?", "expected_route": "compare_titles", "expected_titles_any": ["One Piece", "Naruto: Shippuden"], "expected_keywords": ["One Piece", "Naruto"]},
+  {"question": "Does Bleach have fewer episodes than One Piece?", "expected_route": "compare_titles", "expected_titles_any": ["Bleach", "One Piece"], "expected_keywords": ["Bleach", "One Piece"]}
 ]

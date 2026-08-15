@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "ingest"))
 from qdrant_store import get_client as get_qdrant_client  # noqa: E402
 from qdrant_store import search as qdrant_search  # noqa: E402
 from qdrant_store import filter_query as qdrant_filter_query  # noqa: E402
+from qdrant_store import get_main_chunk_by_anilist_id as qdrant_get_main_chunk  # noqa: E402
 
 load_dotenv()
 
@@ -72,6 +73,21 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_titles",
+            "description": "Compare the episode counts of two specific named anime/manga (e.g. 'does X have fewer episodes than Y', 'which has more episodes, X or Y'). Use ONLY when exactly two titles are named and the comparison is about episode count.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title_a": {"type": "string", "description": "First anime title"},
+                    "title_b": {"type": "string", "description": "Second anime title"},
+                },
+                "required": ["title_a", "title_b"],
+            },
+        },
+    },
 ]
 
 
@@ -105,6 +121,7 @@ def route(question: str) -> dict | None:
                     "content": (
                         "Decide how to answer the user's anime/manga question by calling exactly one tool. "
                         "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. "
+                        "Next, if the question names exactly two anime titles and asks to compare their episode counts (e.g. 'does X have more episodes than Y', 'which has more episodes, X or Y'), choose compare_titles. "
                         "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. "
                         "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format."
                     ),
@@ -191,6 +208,38 @@ def semantic_search(query: str, k: int = K, source_filter: str | None = None) ->
     return _dedupe_sibling_titles(pool, k)
 
 
+# Mirrors compareTitles/resolveTitleFacts/titlesMatch in api/chat.js: validate
+# the top hit's title before trusting it, then re-fetch that entry's main
+# chunk by anilist_id for the authoritative episode count (a bare title-only
+# query's top hit isn't reliably the main chunk -- see chat.js comment).
+# Exact match, not substring: "Bleach" is a substring of e.g. "BLEACH:
+# Thousand-Year Blood War - The Conflict" (a single 14-episode cour), which
+# would silently answer the flagship show's question with the wrong cour's
+# count. Failing closed (notFound) beats a plausible-looking wrong number.
+def _titles_match(requested: str, hit_title: str) -> bool:
+    nr, nh = _normalize_title(requested), _normalize_title(hit_title)
+    return bool(nr) and nr == nh
+
+
+def _resolve_title_facts(requested: str) -> dict:
+    hits = semantic_search(requested)
+    # An anime and its manga counterpart can share the exact same title
+    # string; "episodes" only applies to the anime one, so prefer it among
+    # matches instead of trusting whichever ranked first.
+    matches = [h for h in hits if _titles_match(requested, h["title"])]
+    hit = next((h for h in matches if (h.get("metadata") or {}).get("type") != "MANGA"), matches[0] if matches else None)
+    if not hit:
+        return {"requestedTitle": requested, "notFound": True}
+    anilist_id = (hit.get("metadata") or {}).get("anilist_id")
+    main = qdrant_get_main_chunk(get_qdrant_client(), anilist_id) if anilist_id is not None else None
+    source = main or hit
+    return {"requestedTitle": requested, "title": source["title"], "metadata": source["metadata"], "similarity": hit["similarity"]}
+
+
+def compare_titles(title_a: str, title_b: str) -> list[dict]:
+    return [_resolve_title_facts(title_a), _resolve_title_facts(title_b)]
+
+
 def filter_lookup(args: dict) -> list[dict]:
     rows, total_count = qdrant_filter_query(
         get_qdrant_client(),
@@ -205,6 +254,15 @@ def filter_lookup(args: dict) -> list[dict]:
 
 
 def build_context(route_name: str, results: list[dict]) -> str:
+    if route_name == "compare_titles":
+        lines = []
+        for r in results:
+            if r.get("notFound"):
+                lines.append(f"[{r['requestedTitle']}] Not found in database.")
+            else:
+                meta = r.get("metadata") or {}
+                lines.append(f"[{r['title']}] episodes: {meta.get('episodes', 'unknown')}, format: {meta.get('format', 'unknown')}")
+        return "\n".join(lines)
     if route_name == "filter_lookup":
         total = results[0].get("total_count", len(results)) if results else 0
         header = (
@@ -326,10 +384,8 @@ def run_eval(qa_pairs: list[dict], gate: bool = False) -> bool:
 
         tool_call = route(pair["question"])
         called_name = tool_call["function"]["name"] if tool_call else None
-        route_name = called_name if called_name in ("filter_lookup", "opinion_search") else "semantic_search"
+        route_name = called_name if called_name in ("filter_lookup", "opinion_search", "compare_titles") else "semantic_search"
         expected_route = pair.get("expected_route", "semantic_search")
-        if route_name == expected_route:
-            route_matches += 1
 
         args = json.loads(tool_call["function"]["arguments"]) if tool_call and tool_call["function"].get("arguments") else {}
         if route_name == "filter_lookup":
@@ -338,9 +394,19 @@ def run_eval(qa_pairs: list[dict], gate: bool = False) -> bool:
         elif route_name == "opinion_search":
             results = semantic_search(args.get("query") or pair["question"], source_filter="jikan_review")
             retrieved_titles = {c["title"] for c in results}
+        elif route_name == "compare_titles":
+            if args.get("title_a") and args.get("title_b"):
+                results = compare_titles(args["title_a"], args["title_b"])
+            else:
+                route_name = "semantic_search"
+                results = semantic_search(pair["question"])
+            retrieved_titles = {r["title"] for r in results if not r.get("notFound")}
         else:
             results = semantic_search(pair["question"])
             retrieved_titles = {c["title"] for c in results}
+
+        if route_name == expected_route:
+            route_matches += 1
 
         rhit = retrieval_hit(pair, retrieved_titles)
         if rhit:

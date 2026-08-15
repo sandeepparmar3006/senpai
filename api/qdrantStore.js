@@ -110,6 +110,24 @@ export async function search(qdrant, queryEmbedding, k = 5, sourceFilter = null,
     .map((e) => hitDict(e.hit, e.cosine));
 }
 
+// Structured facts (episodes, format) only live reliably on an entry's MAIN
+// chunk -- cast/lore chunks carry a narrower metadata dict without them (see
+// ingest/chunk_and_embed.py). The main chunk always has the lowest
+// popularity_rank within its entry (offset +0 vs. cast +1, lore +2, ...), so
+// this is a cheap, index-backed way to get the authoritative chunk once an
+// anilist_id has been resolved via semantic search -- no new payload index
+// needed, same pattern as filterQuery below.
+export async function getMainChunk(qdrant, anilistId) {
+  const filter = { must: [{ key: "source", match: { value: "anilist" } }, { key: "metadata.anilist_id", match: { value: anilistId } }] };
+  const { points } = await qdrant.scroll(COLLECTION, {
+    filter,
+    limit: 1,
+    order_by: { key: "metadata.popularity_rank", direction: "asc" },
+    with_payload: true,
+  });
+  return points[0] ? hitDict(points[0], null) : null;
+}
+
 // Hardcoded to anilist: filter_media never had a source filter in the old
 // schema and only worked by accident (filterLookup's anilist_id dedup
 // happened to prefer anime rows over review rows, which have higher ids).

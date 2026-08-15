@@ -236,6 +236,32 @@ def filter_query(
     return rows, total_count
 
 
+# Structured facts (episodes, format) only live reliably on an entry's MAIN
+# chunk -- cast/lore chunks carry a narrower metadata dict without them (see
+# ingest/chunk_and_embed.py). The main chunk always has the lowest
+# popularity_rank within its entry (offset +0 vs. cast +1, lore +2, ...), so
+# this is a cheap, index-backed way to get the authoritative chunk once an
+# anilist_id has been resolved via semantic search -- no new payload index
+# needed, same pattern as filter_query above.
+def get_main_chunk_by_anilist_id(client: QdrantClient, anilist_id: int) -> dict | None:
+    query_filter = Filter(
+        must=[
+            FieldCondition(key="source", match=MatchValue(value="anilist")),
+            FieldCondition(key="metadata.anilist_id", match=MatchValue(value=anilist_id)),
+        ]
+    )
+    records, _ = client.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=query_filter,
+        limit=1,
+        order_by=OrderBy(key="metadata.popularity_rank", direction=Direction.ASC),
+    )
+    if not records:
+        return None
+    r = records[0]
+    return {"source_id": r.payload["source_id"], "title": r.payload["title"], "metadata": r.payload["metadata"]}
+
+
 if __name__ == "__main__":
     ensure_collection()
     print(f"Collection '{COLLECTION}' ready with payload indexes: {list(PAYLOAD_INDEXES)}")
