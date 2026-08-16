@@ -131,7 +131,7 @@ export async function getMainChunk(qdrant, anilistId) {
 // Hardcoded to anilist: filter_media never had a source filter in the old
 // schema and only worked by accident (filterLookup's anilist_id dedup
 // happened to prefer anime rows over review rows, which have higher ids).
-export async function filterQuery(qdrant, { genre, minEpisodes, maxEpisodes, format, limit = 50 } = {}) {
+export async function filterQuery(qdrant, { genre, excludeGenre, minEpisodes, maxEpisodes, format, limit = 50 } = {}) {
   const must = [{ key: "source", match: { value: "anilist" } }];
   if (genre != null) must.push({ key: "metadata.genres", match: { value: genre } });
   if (format != null) must.push({ key: "metadata.format", match: { value: format } });
@@ -141,7 +141,9 @@ export async function filterQuery(qdrant, { genre, minEpisodes, maxEpisodes, for
       range: { gte: minEpisodes ?? undefined, lte: maxEpisodes ?? undefined },
     });
   }
-  const filter = { must };
+  const must_not = [];
+  if (excludeGenre != null) must_not.push({ key: "metadata.genres", match: { value: excludeGenre } });
+  const filter = must_not.length ? { must, must_not } : { must };
 
   const [{ count: totalCount }, { points }] = await Promise.all([
     qdrant.count(COLLECTION, { filter, exact: true }),

@@ -144,9 +144,17 @@ Three separate additions, done together as one pass over the eval harness:
 
 **Added a CI regression gate.** `.github/workflows/eval-gate.yml` runs the N=22 regression set on any PR touching `api/`, `eval/`, or `ingest/qdrant_store.py` (path-filtered at the trigger level, so unrelated PRs don't burn API calls) and fails the PR if route/retrieval/keyword drop below 90%/85%/85% — thresholds with margin below the current baseline, but the 2026-08-05 incident where a routing-model swap crashed route match to 64% would still fail this gate. Groundedness is reported in the job log but deliberately not gated on, given the run-to-run noise above. Verified with a real throwaway PR, watched live in GitHub Actions to a green pass, not just assumed working from the YAML.
 
-**Known limitations, documented rather than silently worked around:**
-- Comparative two-title questions can miss one of the two named titles in retrieval (see above) — would need a dedicated compare-titles code path, not a retrieval fix.
-- `filter_lookup` has no negation/exclusion operator — "anime that are NOT X" either substitutes a single wrong category or silently ignores the constraint.
+**Known limitations at the time (both since resolved, see 2026-08-15/16 sections below):**
+- Comparative two-title questions could miss one of the two named titles in retrieval — needed a dedicated compare-titles code path, not a retrieval fix.
+- `filter_lookup` had no negation/exclusion operator — "anime that are NOT X" either substituted a single wrong category or silently ignored the constraint.
+
+### Comparative Titles + Short-Title Retrieval Fix (2026-08-15/16)
+
+Added a dedicated `compare_titles` route (function-calling tool + `resolveTitleFacts`/`titlesMatch` exact-match resolution) so two-title episode comparisons no longer route through `semantic_search`'s single combined-query embedding. Verified live that a bare short title (e.g. "Bleach") could still rank outside the K*4=20 fused semantic pool used for title lookups even though the exact entry exists in the corpus — `resolveTitleFacts` widened to a dedicated 50-result pool (`TITLE_LOOKUP_POOL`, skipping the franchise-dedup step, which isn't relevant to an exact-title lookup) fixed it; both `api/chat.js` and `eval/eval.py` verified against the holdout set's Bleach fixtures before and after.
+
+### Negation Support for filter_lookup (2026-08-16)
+
+Added `exclude_genre` alongside `genre` — Qdrant's native `must_not` filter condition, no new payload index needed (`metadata.genres` was already indexed). Landed the eval fixtures *before* the fix: two negation questions verified against the live corpus (positive picks and canary/must-be-excluded picks both individually confirmed against `metadata.genres`, and re-checked against `filter_lookup`'s real default `limit=50` truncation so the canaries would actually have appeared had exclusion not worked) were committed while still failing, to prove the gap and the test were both real before touching the fix. `retrieval_hit` gained an `expected_titles_none` check (existing `expected_title`/`expected_titles_any` only assert presence, so a dropped constraint would have false-passed). Both fixtures pass post-fix; holdout retrieval rate held at 96% (68/71 → still two pre-existing, unrelated hallucination-judge misses), comfortably above the CI gate's 85% floor.
 
 ## Architecture
 

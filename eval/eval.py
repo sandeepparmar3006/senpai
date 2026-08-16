@@ -50,6 +50,11 @@ TOOLS = [
                         "description": "A single genre to filter by. Case-sensitive — use the exact capitalization from this list.",
                         "enum": ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"],
                     },
+                    "exclude_genre": {
+                        "type": "string",
+                        "description": "A single genre to EXCLUDE. Set this when the question says a genre should NOT be included, is excluded, or asks for anime 'that aren't' / 'without' that genre — e.g. 'Comedy anime that aren't Romance' means genre=\"Comedy\", exclude_genre=\"Romance\". Never put the excluded genre in the genre field.",
+                        "enum": ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"],
+                    },
                     "min_episodes": {"type": "integer"},
                     "max_episodes": {"type": "integer"},
                     "format": {
@@ -260,6 +265,7 @@ def filter_lookup(args: dict) -> list[dict]:
     rows, total_count = qdrant_filter_query(
         get_qdrant_client(),
         genre=args.get("genre"),
+        exclude_genre=args.get("exclude_genre"),
         min_episodes=args.get("min_episodes"),
         max_episodes=args.get("max_episodes"),
         format=args.get("format"),

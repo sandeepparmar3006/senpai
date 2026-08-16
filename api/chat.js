@@ -56,6 +56,12 @@ const TOOLS = [
             description: "A single genre to filter by. Case-sensitive — use the exact capitalization from this list.",
             enum: ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"],
           },
+          exclude_genre: {
+            type: "string",
+            description:
+              "A single genre to EXCLUDE. Set this when the question says a genre should NOT be included, is excluded, or asks for anime 'that aren't' / 'without' that genre — e.g. 'Comedy anime that aren't Romance' means genre=\"Comedy\", exclude_genre=\"Romance\". Never put the excluded genre in the genre field.",
+            enum: ["Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"],
+          },
           min_episodes: { type: "integer" },
           max_episodes: { type: "integer" },
           format: {
@@ -263,6 +269,7 @@ async function compareTitles(titleA, titleB) {
 async function filterLookup(args) {
   const data = await qdrantFilterQuery(getQdrantClient(), {
     genre: args.genre ?? null,
+    excludeGenre: args.exclude_genre ?? null,
     minEpisodes: args.min_episodes ?? null,
     maxEpisodes: args.max_episodes ?? null,
     format: args.format ?? null,

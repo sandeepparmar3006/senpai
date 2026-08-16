@@ -194,6 +194,7 @@ def search(
 def filter_query(
     client: QdrantClient,
     genre: str | None = None,
+    exclude_genre: str | None = None,
     min_episodes: int | None = None,
     max_episodes: int | None = None,
     format: str | None = None,
@@ -213,7 +214,10 @@ def filter_query(
                 key="metadata.episodes", range=Range(gte=min_episodes, lte=max_episodes)
             )
         )
-    query_filter = Filter(must=must)
+    must_not = []
+    if exclude_genre is not None:
+        must_not.append(FieldCondition(key="metadata.genres", match=MatchValue(value=exclude_genre)))
+    query_filter = Filter(must=must, must_not=must_not or None)
 
     total_count = client.count(
         collection_name=COLLECTION, count_filter=query_filter, exact=True
