@@ -219,7 +219,7 @@ Fixed by migrating the vector store to Qdrant Cloud, a purpose-built vector data
 - ~~Hybrid dense+sparse retrieval~~ — done, see "Hybrid Dense+Sparse Retrieval" above. Fixes two previously-undocumented dense-only retrieval misses.
 - ~~Eval groundedness/hallucination scoring~~ — done, see "Eval Hardening" above. A fourth metric alongside route/retrieval/keyword, distinguishing correct-and-grounded answers from correct-but-not-actually-supported-by-context ones.
 - ~~CI regression gate~~ — done: `.github/workflows/eval-gate.yml` fails PRs touching retrieval/routing code if accuracy regresses, verified live against a real test PR.
-- Cross-encoder reranker — not currently planned. The one gap found during the eval-hardening pass (comparative two-title questions) is a routing-architecture problem a reranker wouldn't fix, and nothing else has surfaced to justify the added latency/cost.
+- Cross-encoder reranker — not currently planned. The two gaps found during the eval-hardening pass (comparative two-title questions, `filter_lookup` negation) were a routing-architecture problem and a missing filter operator respectively — both since fixed (see 2026-08-15/16 sections above), neither was a ranking problem a reranker would have fixed, and nothing else has surfaced to justify the added latency/cost.
 - Ingest confirmed-missing titles from `query_log` misses — still traffic-gated, unchanged since it was first noted; nothing to build until real misses accumulate.
 
 ## License
