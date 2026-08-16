@@ -336,6 +336,13 @@ def groundedness_hit(question: str, answer: str, context: str) -> bool:
 
 def retrieval_hit(pair: dict, retrieved_titles: set[str]) -> bool:
     retrieved_lower = {t.lower() for t in retrieved_titles}
+    # expected_titles_none: negation fixtures (filter_lookup exclude_genre) --
+    # any of these showing up means the constraint was dropped or substituted,
+    # not just that the positive answer was incomplete. Checked before the
+    # positive match so a false-negative can't mask a false-positive.
+    if pair.get("expected_titles_none"):
+        if retrieved_lower & {t.lower() for t in pair["expected_titles_none"]}:
+            return False
     if pair.get("expected_title"):
         return pair["expected_title"].lower() in retrieved_lower
     if pair.get("expected_titles_any"):

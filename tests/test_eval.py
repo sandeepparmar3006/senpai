@@ -21,6 +21,10 @@ def test_retrieval_hit():
     assert retrieval_hit({"expected_titles_any": ["Naruto", "One Piece"]}, {"One Piece"})
     assert not retrieval_hit({"expected_titles_any": ["Naruto"]}, set())
     assert not retrieval_hit({}, {"Naruto"})
+    # expected_titles_none: negation fixtures -- excluded title showing up fails
+    # regardless of the positive match, even if a positive pick is also present.
+    assert retrieval_hit({"expected_titles_any": ["Naruto"], "expected_titles_none": ["Bleach"]}, {"Naruto"})
+    assert not retrieval_hit({"expected_titles_any": ["Naruto"], "expected_titles_none": ["Bleach"]}, {"Naruto", "Bleach"})
 
 
 def test_keyword_hit():
