@@ -16,6 +16,20 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const IP_LIMIT = { max: 15, windowSeconds: 60 };
 const GLOBAL_LIMIT = { max: 1000, windowSeconds: 86400 };
 
+// Client sends the running transcript back on each request (no server-side
+// session store). Cap turns and per-message length so a malicious payload
+// can't inflate Together API cost/latency through the history alone.
+const MAX_HISTORY_TURNS = 6; // 3 user+assistant exchanges
+const MAX_HISTORY_CHARS = 1000;
+
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .slice(-MAX_HISTORY_TURNS)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CHARS) }));
+}
+
 async function withinLimit(bucket, { max, windowSeconds }) {
   const { data, error } = await supabase.rpc("check_rate_limit", {
     bucket_key: bucket,
@@ -119,7 +133,7 @@ async function chatCompletion(body) {
   return resp.json();
 }
 
-async function route(question) {
+async function route(question, history = []) {
   const data = await chatCompletion({
     messages: [
       {
@@ -129,8 +143,10 @@ async function route(question) {
           "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. " +
           "Next, if the question names exactly two anime titles and asks to compare their episode counts (e.g. 'does X have more episodes than Y', 'which has more episodes, X or Y'), choose compare_titles. " +
           "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. " +
-          "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format.",
+          "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format. " +
+          "Prior turns may follow — resolve pronouns and follow-up references ('it', 'that show', 'the MC', 'him') against them before picking a tool and extracting arguments.",
       },
+      ...history,
       { role: "user", content: question },
     ],
     tools: TOOLS,
@@ -336,7 +352,7 @@ function buildContext(routeName, results) {
 const OPINION_SYSTEM_PROMPT =
   "Answer only using the provided fan reviews. Summarize the overall reception, note disagreement between reviewers if present, and cite anime titles in brackets. Don't present one reviewer's opinion as universal consensus.";
 
-async function streamGenerate(res, question, routeName, results) {
+async function streamGenerate(res, question, routeName, results, history = []) {
   const context = buildContext(routeName, results);
   const resp = await fetch("https://api.together.xyz/v1/chat/completions", {
     method: "POST",
@@ -351,10 +367,12 @@ async function streamGenerate(res, question, routeName, results) {
         {
           role: "system",
           content:
-            routeName === "opinion_search"
+            (routeName === "opinion_search"
               ? OPINION_SYSTEM_PROMPT
-              : "Answer only using the provided context. Cite anime titles in brackets.",
+              : "Answer only using the provided context. Cite anime titles in brackets.") +
+            " Prior turns may follow for conversational context — the current question's Context block above is still the only source for facts in your answer.",
         },
+        ...history,
         { role: "user", content: `Context:\n${context}\n\nQuestion: ${question}` },
       ],
     }),
@@ -393,11 +411,12 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "POST only" });
     return;
   }
-  const { query } = req.body;
+  const { query, history } = req.body;
   if (!query) {
     res.status(400).json({ error: "query required" });
     return;
   }
+  const safeHistory = sanitizeHistory(history);
 
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   const [ipOk, globalOk] = await Promise.all([
@@ -411,7 +430,7 @@ export default async function handler(req, res) {
 
   let toolCall, routeName, results, routeArgs;
   try {
-    toolCall = await route(query);
+    toolCall = await route(query, safeHistory);
     const calledName = toolCall?.function?.name;
     routeName = ["filter_lookup", "opinion_search", "compare_titles"].includes(calledName) ? calledName : "semantic_search";
     routeArgs = toolCall?.function?.arguments ? JSON.parse(toolCall.function.arguments) : {};
@@ -478,7 +497,7 @@ export default async function handler(req, res) {
   res.write(`event: meta\ndata: ${JSON.stringify({ route: routeName, detail, sources })}\n\n`);
 
   try {
-    await streamGenerate(res, query, routeName, results);
+    await streamGenerate(res, query, routeName, results, safeHistory);
   } catch (err) {
     res.write(`event: error\ndata: ${JSON.stringify({ message: "Stream interrupted. Partial answer shown." })}\n\n`);
   }

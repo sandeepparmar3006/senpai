@@ -6,6 +6,11 @@ const sendBtn = document.getElementById("send-btn");
 const scrollLatestBtn = document.getElementById("scroll-latest");
 const header = document.querySelector(".app-header");
 
+// Full transcript sent back to the server each request (no server-side
+// session). Capped so payload/API cost can't grow unbounded in a long chat.
+const MAX_HISTORY_TURNS = 6;
+let conversationHistory = [];
+
 function hideEmptyState() {
   if (emptyState) emptyState.remove();
 }
@@ -213,7 +218,7 @@ async function ask(query) {
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, history: conversationHistory }),
     });
 
     if (!resp.ok) {
@@ -259,6 +264,7 @@ async function ask(query) {
             cursor.className = "stream-cursor";
             assistant.textEl.appendChild(cursor);
           }
+          answer += data.text;
           const chunkSpan = document.createElement("span");
           chunkSpan.className = "token-chunk";
           chunkSpan.textContent = data.text;
@@ -273,6 +279,10 @@ async function ask(query) {
           removeTypingIndicator();
           addBubble("error", data.message);
         } else if (eventName === "done") {
+          if (answer) {
+            conversationHistory.push({ role: "user", content: query }, { role: "assistant", content: answer });
+            conversationHistory = conversationHistory.slice(-MAX_HISTORY_TURNS);
+          }
           if (assistant) {
             assistant.row.querySelector(".stream-cursor")?.remove();
             if (meta.sources?.length) {
