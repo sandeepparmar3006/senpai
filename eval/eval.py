@@ -21,7 +21,7 @@ load_dotenv()
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
 
 EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
-CHAT_MODEL = "openai/gpt-oss-20b"  # open-weight, serverless-accessible on this account
+CHAT_MODEL = "openai/gpt-oss-120b"  # open-weight, serverless-accessible on this account
 K = 5
 
 TOOLS = [

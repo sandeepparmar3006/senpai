@@ -4,7 +4,7 @@ import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qd
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
-const CHAT_MODEL = "openai/gpt-oss-20b";
+const CHAT_MODEL = "openai/gpt-oss-120b";
 const K = 5;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);

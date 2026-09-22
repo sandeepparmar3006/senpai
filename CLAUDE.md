@@ -20,7 +20,7 @@ This guide provides commands, code style rules, and structural findings for deve
 
 ## 🏗 Codebase & Routing Architecture
 
-SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a function-calling tool router (`openai/gpt-oss-20b`) supporting:
+SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a function-calling tool router (`openai/gpt-oss-120b`) supporting:
 1. `semantic_search`: Cosine similarity search (Qdrant) for plot/synopsis/character/terminology-based questions. Searches `media_chunks` collection where `source = 'anilist'`.
 2. `filter_lookup`: Qdrant payload-filtered query for whole-corpus filters (genre, format, episode counts), ordered by `metadata.popularity_rank`.
 3. `opinion_search`: Cosine similarity search over MAL/Jikan fan reviews for opinion/reception/recommendation questions. Same Qdrant collection, `source = 'jikan_review'`.
