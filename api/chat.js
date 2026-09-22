@@ -4,7 +4,7 @@ import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qd
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
-const CHAT_MODEL = "openai/gpt-oss-120b";
+const CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
 const K = 5;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -451,6 +451,7 @@ export default async function handler(req, res) {
       results = await semanticSearch(routeArgs.query || query);
     }
   } catch (err) {
+    console.error("Lookup failed:", err);
     res.status(502).json({ error: "Lookup failed. Try again in a moment." });
     return;
   }

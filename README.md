@@ -169,7 +169,7 @@ AniList GraphQL (isAdult: false filtered at fetch time)        AniList GraphQL (
         |
    api/chat.js (Vercel function)
         | check_rate_limit() RPC (Supabase) -> per-IP (15/min) + global (1000/day) cap, fail-open
-        | route(query) -> Together chat completion w/ tools (openai/gpt-oss-120b), tool_choice: required
+        | route(query) -> Together chat completion w/ tools (meta-llama/Llama-3.3-70B-Instruct-Turbo), tool_choice: required
         |   |-- semantic_search  -> embed query -> Qdrant hybrid search (dense cosine + sparse BM25, RRF-fused, source: anilist)
         |   |-- filter_lookup    -> Qdrant payload-filtered query, ordered by popularity_rank
         |   |-- opinion_search   -> embed query -> Qdrant hybrid search (dense + sparse, RRF-fused, source: jikan_review)
