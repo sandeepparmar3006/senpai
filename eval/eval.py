@@ -10,6 +10,7 @@ import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "ingest"))
+from cf_embed import embed_text as embed_query  # noqa: E402
 from qdrant_store import get_client as get_qdrant_client  # noqa: E402
 from qdrant_store import search as qdrant_search  # noqa: E402
 from qdrant_store import filter_query as qdrant_filter_query  # noqa: E402
@@ -20,7 +21,6 @@ load_dotenv()
 # .get() so the module imports without credentials (e.g. in CI); network calls still require them
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
 
-EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
 CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"  # serverless, reliable forced tool_choice on this account
 K = 5
 
@@ -141,9 +141,6 @@ def route(question: str) -> dict | None:
     return tool_calls[0] if tool_calls else None
 
 
-def embed_query(text: str) -> list[float]:
-    data = _post_with_retry("https://api.together.xyz/v1/embeddings", {"model": EMBED_MODEL, "input": text})
-    return data["data"][0]["embedding"]
 
 
 # Sibling entries (sequels, OVAs, side stories) of the same franchise crowd out

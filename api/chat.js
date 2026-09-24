@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qdrantFilterQuery, getMainChunk as qdrantGetMainChunk } from "./qdrantStore.js";
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
-const EMBED_MODEL = "intfloat/multilingual-e5-large-instruct";
+const EMBED_MODEL = "@cf/baai/bge-m3";
 const CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
 const K = 5;
 
@@ -157,16 +157,22 @@ async function route(question, history = []) {
 }
 
 async function embed(text) {
-  const resp = await fetch("https://api.together.xyz/v1/embeddings", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${TOGETHER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: EMBED_MODEL, input: text }),
-  });
+  const resp = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${EMBED_MODEL}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text: [text] }),
+    }
+  );
   const data = await resp.json();
-  return data.data[0].embedding;
+  if (!resp.ok || !data.result?.data?.[0]) {
+    throw new Error(`Cloudflare embed failed: ${resp.status} ${JSON.stringify(data).slice(0, 300)}`);
+  }
+  return data.result.data[0];
 }
 
 // Sibling entries (sequels, OVAs, side stories) of the same franchise crowd out

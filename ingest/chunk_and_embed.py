@@ -1,19 +1,15 @@
-"""Turn raw AniList entries into embedded chunks via Together AI."""
+"""Turn raw AniList entries into embedded chunks via Cloudflare Workers AI (bge-m3)."""
 import json
-import os
 import re
 import time
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 load_dotenv()
 
-TOGETHER_API_KEY = os.environ["TOGETHER_API_KEY"]
-EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"  # serverless/free-tier on Together; bge models need a paid dedicated endpoint
-EMBED_URL = "https://api.together.xyz/v1/embeddings"
+from cf_embed import embed_text  # noqa: E402
 
 
 def clean_html(text: str | None) -> str:
@@ -196,23 +192,6 @@ def generate_chunks(entry: dict, entry_rank: int = 0) -> list[dict]:
     return chunks
 
 
-def embed_text(text: str, retries: int = 6) -> list[float]:
-    for attempt in range(retries):
-        try:
-            resp = requests.post(
-                EMBED_URL,
-                headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"},
-                json={"model": EMBED_MODEL, "input": text},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-        except requests.exceptions.RequestException:
-            if attempt == retries - 1:
-                raise
-            time.sleep(min(2**attempt, 20))
-
-
 def process(raw_entries: list[dict], cache: dict = None, cache_path: Path = None, checkpoint_every: int = 100, rank_offset: int = 0) -> list[dict]:
     if cache is None:
         cache = {}
@@ -254,7 +233,7 @@ if __name__ == "__main__":
     data_dir = Path(__file__).parent.parent / "data"
     raw = json.loads((data_dir / "raw_anilist.json").read_text())
     
-    cache_path = data_dir / "embedded.json"
+    cache_path = data_dir / "embedded_bge.json"
     cache = {}
     if cache_path.exists():
         try:

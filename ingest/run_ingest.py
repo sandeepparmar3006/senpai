@@ -15,7 +15,7 @@ from load_to_qdrant import load
 DATA_DIR = Path(__file__).parent.parent / "data"
 PROGRESS_FILE = DATA_DIR / "ingest_progress.json"
 RAW_FILE = DATA_DIR / "raw_anilist.json"
-CACHE_PATH = DATA_DIR / "embedded.json"
+CACHE_PATH = DATA_DIR / "embedded_bge.json"
 
 
 def load_progress() -> int:

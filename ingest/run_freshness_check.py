@@ -25,7 +25,7 @@ if __name__ == "__main__":
     raw_entries = anime_entries + manga_entries
     print(f"  {len(raw_entries)} entries fetched ({len(anime_entries)} anime, {len(manga_entries)} manga)")
 
-    cache_path = data_dir / "embedded.json"
+    cache_path = data_dir / "embedded_bge.json"
     cache = {}
     if cache_path.exists():
         try:

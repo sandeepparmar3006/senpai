@@ -55,6 +55,6 @@ if __name__ == "__main__":
     from pathlib import Path
 
     data_dir = Path(__file__).parent.parent / "data"
-    chunks = json.loads((data_dir / "embedded.json").read_text())
+    chunks = json.loads((data_dir / "embedded_bge.json").read_text())
     count = load(chunks)
     print(f"Loaded {count} chunks into Qdrant")
