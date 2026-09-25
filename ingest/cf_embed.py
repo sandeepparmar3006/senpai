@@ -22,7 +22,13 @@ def embed_texts(texts: list[str], retries: int = 4) -> list[list[float]]:
     for i in range(0, len(texts), BATCH):
         batch = texts[i : i + BATCH]
         for attempt in range(retries):
-            r = requests.post(url, headers=headers, json={"text": batch}, timeout=90)
+            try:
+                r = requests.post(url, headers=headers, json={"text": batch}, timeout=90)
+            except requests.exceptions.RequestException:
+                if attempt == retries - 1:
+                    raise
+                time.sleep(2**attempt)
+                continue
             if r.status_code == 200:
                 break
             if "daily free allocation" in r.text:
