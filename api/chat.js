@@ -310,11 +310,14 @@ async function filterLookup(args) {
   return deduped;
 }
 
-// Feeds corpus-growth prioritization (ingest/review_misses.py). Threshold is
-// empirical, not exact: hits on titles that exist in the corpus cluster
-// 0.84-0.90 similarity, genuine gaps cluster 0.80-0.83 -- a review-queue
-// signal, not a hard cutoff.
-const MISS_SIMILARITY_THRESHOLD = 0.83;
+// Feeds corpus-growth prioritization (ingest/review_misses.py). Empirical, not
+// exact, and tied to bge-m3's cosine scale (re-measure if the embedding model
+// changes): on 2026-09-26, answerable eval questions scored 0.53-0.72 and
+// fabricated/off-topic ones 0.42-0.60, so 0.55 flags ~5% of answerable
+// questions and catches ~84% of unanswerable ones -- a review-queue signal, not
+// a hard cutoff. Opinion search separates worse (generic review chunks match
+// anything), so expect more noise there.
+const MISS_SIMILARITY_THRESHOLD = 0.55;
 
 async function logQuery(question, routeName, results) {
   let similarity = null;
@@ -325,7 +328,8 @@ async function logQuery(question, routeName, results) {
     isMiss = resultCount === 0;
   } else if (routeName === "compare_titles") {
     resultCount = results.filter((r) => !r.notFound).length;
-    isMiss = results.some((r) => r.notFound || (r.similarity !== null && r.similarity < MISS_SIMILARITY_THRESHOLD));
+    // Score is unreliable for bare-title lookups (exact matches score 0.50-0.66); an exact title match is the real signal.
+    isMiss = results.some((r) => r.notFound);
   } else {
     similarity = results[0]?.similarity ?? null;
     isMiss = similarity !== null && similarity < MISS_SIMILARITY_THRESHOLD;
