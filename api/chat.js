@@ -159,11 +159,11 @@ async function route(question, history = []) {
 
 async function embed(text) {
   const resp = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${EMBED_MODEL}`,
+    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID?.trim()}/ai/run/${EMBED_MODEL}`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+        Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN?.trim()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text: [text] }),

@@ -16,8 +16,8 @@ class DailyCapReached(Exception):
 
 
 def embed_texts(texts: list[str], retries: int = 4) -> list[list[float]]:
-    url = f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/ai/run/{MODEL}"
-    headers = {"Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN']}"}
+    url = f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID'].strip()}/ai/run/{MODEL}"
+    headers = {"Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN'].strip()}"}
     out: list[list[float]] = []
     for i in range(0, len(texts), BATCH):
         batch = texts[i : i + BATCH]
