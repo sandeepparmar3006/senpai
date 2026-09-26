@@ -29,7 +29,7 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
 
 * **Backend**: Vercel Node.js Serverless function at [api/chat.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/chat.js), using [api/qdrantStore.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/qdrantStore.js) for all vector search/filter calls.
 * **Frontend**: Single page pure HTML/JS/CSS app served out of [public/](file:///Users/sandeepparmar/.claude/projects/senpai/public/).
-* **Database**: Qdrant Cloud for vector search (`media_chunks_bge` collection; the old e5-embedded `media_chunks` is kept only as a source/backup). Supabase PostgreSQL for rate limiting (`rate_limits`) and query-miss logging (`query_log`) only -- no vector data lives there anymore (migrated 2026-07-24, see README.md "Vector store migration").
+* **Database**: Qdrant Cloud for vector search (`media_chunks_bge` collection; the old e5-embedded `media_chunks` was deleted 2026-09-26 after the bge-m3 migration was verified). Supabase PostgreSQL for rate limiting (`rate_limits`) and query-miss logging (`query_log`) only -- no vector data lives there anymore (migrated 2026-07-24, see README.md "Vector store migration").
 
 ---
 
