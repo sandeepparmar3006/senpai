@@ -4,7 +4,7 @@
 // writes only ever happen from the Python ingest side.
 import { QdrantClient } from "@qdrant/js-client-rest";
 
-export const COLLECTION = process.env.QDRANT_COLLECTION || "media_chunks";
+export const COLLECTION = process.env.QDRANT_COLLECTION || "media_chunks_bge";
 
 let client;
 export function getClient() {

@@ -21,7 +21,7 @@ load_dotenv()
 # .get() so the module imports without credentials (e.g. in CI); network calls still require them
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY")
 
-CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"  # serverless, reliable forced tool_choice on this account
+CHAT_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash"  # serverless; sends only the tool args the question specifies (Llama-3.3-70B over-filled optional args)
 K = 5
 
 TOOLS = [
@@ -128,7 +128,8 @@ def route(question: str) -> dict | None:
                         "First check: does the question ask for an opinion, recommendation, rating, or reception about a specific named anime — is it good, is it worth watching, how is the pacing, what do people think, should I watch it? If so, always choose opinion_search, even if it also mentions plot or characters in passing. "
                         "Next, if the question names exactly two anime titles and asks to compare their episode counts (e.g. 'does X have more episodes than Y', 'which has more episodes, X or Y'), choose compare_titles. "
                         "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. "
-                        "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format."
+                        "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format. "
+                        "When calling filter_lookup, include ONLY the arguments the question explicitly specifies and omit every other argument entirely: never pass 0 or placeholder values, never set exclude_genre unless the question excludes a genre, and never set format unless the question names one."
                     ),
                 },
                 {"role": "user", "content": question},

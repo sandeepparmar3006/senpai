@@ -33,7 +33,7 @@ load_dotenv()
 # .get() so the module imports without credentials (e.g. in CI); network calls still require them
 QDRANT_URL = os.environ.get("QDRANT_URL")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
-COLLECTION = os.environ.get("QDRANT_COLLECTION", "media_chunks")
+COLLECTION = os.environ.get("QDRANT_COLLECTION", "media_chunks_bge")
 VECTOR_SIZE = 1024
 SPARSE_NAME = "sparse"
 # Reciprocal-rank-fusion constant (standard value from the RRF paper).

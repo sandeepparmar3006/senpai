@@ -4,7 +4,7 @@ import { getClient as getQdrantClient, search as qdrantSearch, filterQuery as qd
 
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const EMBED_MODEL = "@cf/baai/bge-m3";
-const CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+const CHAT_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash";
 const K = 5;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -144,6 +144,7 @@ async function route(question, history = []) {
           "Next, if the question names exactly two anime titles and asks to compare their episode counts (e.g. 'does X have more episodes than Y', 'which has more episodes, X or Y'), choose compare_titles. " +
           "Otherwise, if the question names a specific anime and asks about its plot, characters, or details, choose semantic_search, even if phrased as 'what X'. " +
           "Only choose filter_lookup when the question asks to list, count, or filter across multiple anime by genre, episode count, or format. " +
+          "When calling filter_lookup, include ONLY the arguments the question explicitly specifies and omit every other argument entirely: never pass 0 or placeholder values, never set exclude_genre unless the question excludes a genre, and never set format unless the question names one. " +
           "Prior turns may follow — resolve pronouns and follow-up references ('it', 'that show', 'the MC', 'him') against them before picking a tool and extracting arguments.",
       },
       ...history,

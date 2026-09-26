@@ -20,7 +20,7 @@ This guide provides commands, code style rules, and structural findings for deve
 
 ## 🏗 Codebase & Routing Architecture
 
-SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a function-calling tool router (`meta-llama/Llama-3.3-70B-Instruct-Turbo`) supporting:
+SenpAI is a RAG assistant that retrieves anime/manga metadata. It implements a function-calling tool router (`deepseek-ai/DeepSeek-V4.1-Flash`) supporting:
 1. `semantic_search`: Cosine similarity search (Qdrant) for plot/synopsis/character/terminology-based questions. Searches `media_chunks` collection where `source = 'anilist'`.
 2. `filter_lookup`: Qdrant payload-filtered query for whole-corpus filters (genre, format, episode counts), ordered by `metadata.popularity_rank`.
 3. `opinion_search`: Cosine similarity search over MAL/Jikan fan reviews for opinion/reception/recommendation questions. Same Qdrant collection, `source = 'jikan_review'`.
@@ -29,7 +29,7 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
 
 * **Backend**: Vercel Node.js Serverless function at [api/chat.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/chat.js), using [api/qdrantStore.js](file:///Users/sandeepparmar/.claude/projects/senpai/api/qdrantStore.js) for all vector search/filter calls.
 * **Frontend**: Single page pure HTML/JS/CSS app served out of [public/](file:///Users/sandeepparmar/.claude/projects/senpai/public/).
-* **Database**: Qdrant Cloud for vector search (`media_chunks` collection). Supabase PostgreSQL for rate limiting (`rate_limits`) and query-miss logging (`query_log`) only -- no vector data lives there anymore (migrated 2026-07-24, see README.md "Vector store migration").
+* **Database**: Qdrant Cloud for vector search (`media_chunks_bge` collection; the old e5-embedded `media_chunks` is kept only as a source/backup). Supabase PostgreSQL for rate limiting (`rate_limits`) and query-miss logging (`query_log`) only -- no vector data lives there anymore (migrated 2026-07-24, see README.md "Vector store migration").
 
 ---
 
@@ -46,7 +46,9 @@ Second text source (reviews) is ingested separately from the AniList pipeline: `
 * **Corpus Expansion Guidelines**:
   * To increase SenpAI's domain knowledge, continue expanding the anime corpus. Ingest more pages of popular anime (e.g. increase page count using `python ingest/run_ingest.py --pages 20` or higher to cover more anime series) and fetch corresponding AniList reviews using `python ingest/run_ingest_reviews.py`.
 * **Vector Embeddings**:
-  * Generated using `intfloat/multilingual-e5-large-instruct` (1024-dim).
+  * Generated using Cloudflare Workers AI `@cf/baai/bge-m3` (1024-dim), shared code in `ingest/cf_embed.py`. Migrated from Together e5-large 2026-09 after Together removed serverless embeddings; free tier ~10k neurons/day with a rolling ~24h cap (NOT the documented 00:00 UTC reset). `ingest/migrate_to_bge.py` is resumable across the cap. Ingest caches are `data/embedded_bge.json` (never reuse the old e5 `embedded.json`).
+  * **`MISS_SIMILARITY_THRESHOLD = 0.83` was calibrated on e5 cosine scores and is NOT recalibrated for bge-m3** — it only drives `query_log` miss flags, so re-tune it from real `query_log` data before trusting `review_misses.py` output.
+  * Router models: `tool_choice: required` with the 4-tool schema must be re-tested when swapping models (Llama-3.3-70B over-filled optional args like `exclude_genre`/`min_episodes: 0`; `gpt-oss-120b` 500s under forced tool choice). The router prompt now says to send only explicitly-specified arguments.
   * Qdrant collection configured with `Distance.COSINE` — the returned `score` is already the cosine similarity directly (no `1 - distance` transform needed, unlike the old pgvector `<=>` operator). `MISS_SIMILARITY_THRESHOLD = 0.83` in `api/chat.js`/`eval.py` carried over unchanged post-migration; verified against the eval baseline before cutover, not just assumed to transfer.
 
 ---

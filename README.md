@@ -163,13 +163,13 @@ AniList GraphQL (isAdult: false filtered at fetch time)        AniList GraphQL (
         |                                                              |
    ingest/fetch_anilist.py       -> data/raw_anilist.json    ingest/fetch_anilist_reviews.py -> data/raw_reviews.json
         |                                                              |
-   ingest/chunk_and_embed.py     -> data/embedded.json    ingest/chunk_and_embed_reviews.py -> data/embedded_reviews.json
-        | (Together AI embeddings, intfloat/multilingual-e5-large-instruct, 1024-dim, both sources)
-   ingest/load_to_qdrant.py      -> Qdrant Cloud collection "media_chunks" (source: "anilist" | "jikan_review")
+   ingest/chunk_and_embed.py     -> data/embedded_bge.json   ingest/chunk_and_embed_reviews.py -> data/embedded_reviews.json
+        | (Cloudflare Workers AI embeddings, @cf/baai/bge-m3, 1024-dim, both sources)
+   ingest/load_to_qdrant.py      -> Qdrant Cloud collection "media_chunks_bge" (source: "anilist" | "jikan_review")
         |
    api/chat.js (Vercel function)
         | check_rate_limit() RPC (Supabase) -> per-IP (15/min) + global (1000/day) cap, fail-open
-        | route(query) -> Together chat completion w/ tools (meta-llama/Llama-3.3-70B-Instruct-Turbo), tool_choice: required
+        | route(query) -> Together chat completion w/ tools (deepseek-ai/DeepSeek-V4.1-Flash), tool_choice: required
         |   |-- semantic_search  -> embed query -> Qdrant hybrid search (dense cosine + sparse BM25, RRF-fused, source: anilist)
         |   |-- filter_lookup    -> Qdrant payload-filtered query, ordered by popularity_rank
         |   |-- opinion_search   -> embed query -> Qdrant hybrid search (dense + sparse, RRF-fused, source: jikan_review)
@@ -182,7 +182,7 @@ Rate limiting (`check_rate_limit`) and query-miss logging (`query_log`) stay on 
 
 Corpus is SFW: the AniList fetch query hard-filters `isAdult: false`, so adult-tagged entries never enter the pipeline.
 
-Model note: `BAAI/bge-*` embeddings and `meta-llama/Llama-3.3-*-Free` chat models are catalog-listed on Together but require a paid dedicated endpoint — the models above were confirmed serverless-accessible by testing directly against the API.
+Model note (2026-09): Together removed serverless access to every embedding model and to `gpt-oss-20b`, so embeddings moved to Cloudflare Workers AI (`bge-m3`, free tier ~10k neurons/day, rolling ~24h cap) and chat/routing to `DeepSeek-V4.1-Flash`. Re-embedding the corpus (`ingest/migrate_to_bge.py`) is resumable across the daily cap. Chat models must be tested with `tool_choice: required` and multi-tool schemas: several serverless models over-fill optional tool arguments or 500 under forced tool choice.
 
 **Corpus growth loop**: two mechanisms keep the corpus from going stale or drifting from what users actually ask about. Every chat query is logged to a `query_log` table (fire-and-forget, never blocks the response) with its route, top similarity score, and an `is_miss` flag — similarity < 0.83 on the semantic routes (empirically, in-corpus hits cluster 0.84–0.90, genuine gaps 0.80–0.83) or zero `total_count` on the filter route. `ingest/review_misses.py` ranks recurring misses for manual triage, so future ingestion can target titles users actually asked for instead of only popularity pages. Separately, a GitHub Actions cron (`.github/workflows/freshness.yml`, Mondays 06:00 UTC) runs `ingest/run_freshness_check.py`, which fetches AniList sorted by `UPDATED_AT_DESC` — catching both newly-added shows and metadata corrections to existing entries in one pass — and upserts through the same cache-aware pipeline, so unchanged chunks are never re-embedded.
 
@@ -198,8 +198,9 @@ Fixed by migrating the vector store to Qdrant Cloud, a purpose-built vector data
 
 1. **Qdrant Cloud**: create a free cluster at https://cloud.qdrant.io. The `media_chunks` collection (1024-dim, cosine distance) and its payload indexes are created automatically on first run via `ingest/qdrant_store.py::ensure_collection()` — no manual setup needed beyond the cluster itself. Grab the cluster URL + API key.
 2. **Supabase**: create a project, run `supabase/rate_limit.sql` in the SQL editor (rate limiting + query-miss logging only — vectors live in Qdrant). Grab the project URL + service role key (Settings > API).
-3. **Together AI**: sign up at https://api.together.xyz, generate an API key (free-tier credits).
-4. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`.
+3. **Together AI** (chat/routing): sign up at https://api.together.xyz, generate an API key.
+   **Cloudflare Workers AI** (embeddings): free account, then an API token with Workers AI access.
+4. Copy `.env.example` to `.env` (ingestion) and `.env.local` (Vercel), fill in `TOGETHER_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`.
 5. `pip install -r requirements.txt`
 6. `python ingest/run_ingest.py --pages 40` (40 pages x 50 = 2000 anime + 2000 manga entries)
 7. `python ingest/run_ingest_reviews.py` — fetches reviews directly via AniList, embeds, loads as `source: "jikan_review"` (second text source, powers `opinion_search`).
